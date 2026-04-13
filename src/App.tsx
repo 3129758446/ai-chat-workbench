@@ -7,8 +7,9 @@
  * 4. 请求发送采用“先写 UI 再流式更新”策略，保证用户操作即时反馈。
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { API_KEY_STORAGE } from "./constants";
 import { Composer } from "./components/Composer";
 import { ChatPanel } from "./components/ChatPanel";
@@ -23,6 +24,16 @@ import {
   scrollToBottom,
   uid,
 } from "./utils/helpers";
+
+type AppMode = "home" | "chat";
+
+interface RouteState {
+  draftPrompt?: string;
+}
+
+interface AppProps {
+  mode?: AppMode;
+}
 
 function fileToDataUrl(file: File): Promise<string> {
   // 将上传文件转为 data URL，便于直接以内联方式提交到多模态接口。
@@ -62,9 +73,12 @@ async function buildUserMessageContent(
   return parts;
 }
 
-function App() {
+function App({ mode = "chat" }: AppProps) {
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const routePromptTokenRef = useRef("");
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const {
     input,
@@ -90,7 +104,10 @@ function App() {
   // 同步主题到 body，并在亮暗主题间切换代码高亮样式。
   useEffect(() => {
     document.body.dataset.theme = theme;
-    document.body.classList.toggle("chat-active", messages.length > 0);
+    document.body.classList.toggle(
+      "chat-active",
+      mode === "chat" && messages.length > 0,
+    );
 
     const darkCss = document.getElementById(
       "hljs-theme-dark",
@@ -105,7 +122,7 @@ function App() {
     if (lightCss) {
       lightCss.disabled = !isLight;
     }
-  }, [theme, messages.length]);
+  }, [theme, messages.length, mode]);
 
   // 输入框自动增高，最大高度受控，避免遮挡消息区。
   useEffect(() => {
@@ -142,6 +159,10 @@ function App() {
   const handleClearConversation = () => {
     stopStreaming();
     clearConversation();
+
+    if (mode === "chat") {
+      navigate("/");
+    }
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -174,138 +195,198 @@ function App() {
     return nextKey;
   };
 
-  const sendMessage = async (cardPrompt?: string) => {
-    // 流式阶段禁止并发发送，避免上下文错乱。
-    if (isStreaming) {
-      return;
-    }
+  const sendMessage = useCallback(
+    async (cardPrompt?: string) => {
+      if (mode === "home") {
+        const prompt = (
+          typeof cardPrompt === "string" ? cardPrompt : input
+        ).trim();
+        if (!prompt) {
+          return;
+        }
 
-    const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
-    const text = rawText.trim();
-    const hasImages = uploadingImages.length > 0;
-    if (!text && !hasImages) {
-      return;
-    }
+        clearUploadingImages();
+        setInput("");
+        navigate("/chat", { state: { draftPrompt: prompt } });
+        return;
+      }
 
-    let apiKey = ensureApiKey();
-    if (!apiKey) {
-      // 首次或 Key 被清空时，引导用户输入并立即持久化。
-      apiKey = promptForApiKey();
+      // 流式阶段禁止并发发送，避免上下文错乱。
+      if (isStreaming) {
+        return;
+      }
+
+      const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
+      const text = rawText.trim();
+      const hasImages = uploadingImages.length > 0;
+      if (!text && !hasImages) {
+        return;
+      }
+
+      let apiKey = ensureApiKey();
       if (!apiKey) {
+        // 首次或 Key 被清空时，引导用户输入并立即持久化。
+        apiKey = promptForApiKey();
+        if (!apiKey) {
+          addUiMessage({
+            id: uid("assistant"),
+            role: "assistant",
+            text: "未输入 API Key，本次消息未发送。",
+          });
+          return;
+        }
+      }
+
+      const images = [...uploadingImages];
+      const userDisplayText = text || `（发送了 ${images.length} 张图片）`;
+
+      let userContent: string | MessagePart[];
+      try {
+        // 在真正发送前完成图片编码，失败则给出即时错误提示。
+        userContent = await buildUserMessageContent(text, images);
+      } catch (error) {
         addUiMessage({
           id: uid("assistant"),
           role: "assistant",
-          text: "未输入 API Key，本次消息未发送。",
+          text: error instanceof Error ? error.message : "图片处理失败，请重试",
         });
         return;
       }
-    }
 
-    const images = [...uploadingImages];
-    const userDisplayText = text || `（发送了 ${images.length} 张图片）`;
-
-    let userContent: string | MessagePart[];
-    try {
-      // 在真正发送前完成图片编码，失败则给出即时错误提示。
-      userContent = await buildUserMessageContent(text, images);
-    } catch (error) {
       addUiMessage({
-        id: uid("assistant"),
-        role: "assistant",
-        text: error instanceof Error ? error.message : "图片处理失败，请重试",
+        id: uid("user"),
+        role: "user",
+        text: userDisplayText,
+        content: Array.isArray(userContent)
+          ? userContent.filter(
+              (item): item is MessagePart => item.type === "image_url",
+            )
+          : undefined,
       });
+
+      const currentUserMessage: ApiMessage = {
+        role: "user",
+        content: userContent,
+      };
+      // 历史消息用于模型上下文，UI 消息用于显示，两者并行维护。
+      pushHistory(currentUserMessage);
+
+      setInput("");
+      clearUploadingImages();
+
+      const assistantId = uid("assistant");
+      // 先插入空的助手消息占位，后续通过 onDelta 实时覆盖。
+      addUiMessage({ id: assistantId, role: "assistant", text: "" });
+
+      const controller = new AbortController();
+      setAbortController(controller);
+      setStreaming(true);
+
+      try {
+        const currentHistory = useChatStore.getState().chatHistory;
+        const finalText = await streamChatCompletion(
+          apiKey,
+          currentHistory,
+          controller.signal,
+          (delta) => updateUiMessageText(assistantId, delta),
+        );
+        pushHistory({
+          role: "assistant",
+          content: finalText || "（未返回内容）",
+        });
+      } catch (error) {
+        // 错误分级：中断/鉴权/限流/网络等类型给出可操作提示。
+        let message = "请求失败，请稍后重试。";
+        let shouldReplace = true;
+
+        if (error instanceof Error && error.name === "AbortError") {
+          removeHistoryMessage(currentUserMessage);
+          const currentText = useChatStore
+            .getState()
+            .messages.find((item) => item.id === assistantId)?.text;
+          if (currentText?.trim()) {
+            shouldReplace = false;
+          } else {
+            message = "已停止生成。";
+          }
+        } else {
+          const typedError = error as {
+            status?: number;
+            endpoint?: string;
+            message?: string;
+          };
+          const endpointTip = typedError.endpoint
+            ? `（端点：${escapeHtml(typedError.endpoint)}）`
+            : "";
+
+          if (typedError.status === 401 || typedError.status === 403) {
+            localStorage.removeItem(API_KEY_STORAGE);
+            message = `鉴权失败：API Key 无效、过期或无权限。已清除本地 Key，请重新写入 LINGXI_API_KEY 后再发送。${endpointTip}`;
+          } else if (typedError.status === 429) {
+            message = `请求频率或额度受限（429）。请稍后重试，或检查百炼账号额度。${endpointTip}`;
+          } else if (typedError.status === 400 && hasImages) {
+            message = `图片识别请求被拒绝（400）。请确认当前账号开通了视觉模型，并检查模型名是否可用（当前默认 qwen-vl-plus）。${endpointTip}`;
+          } else if (typedError.message?.includes("Failed to fetch")) {
+            message = `网络请求失败。若控制台出现 ERR_PROXY_CONNECTION_FAILED，可关闭代理或将 dashscope.aliyuncs.com、dashscope-intl.aliyuncs.com 设为直连后重试。${endpointTip}`;
+          } else if (typedError.message) {
+            message = `请求失败：${typedError.message}${endpointTip}`;
+          }
+        }
+
+        if (shouldReplace) {
+          updateUiMessageText(assistantId, message);
+        }
+      } finally {
+        // 无论成功失败都恢复按钮状态。
+        setAbortController(null);
+        setStreaming(false);
+      }
+    },
+    [
+      mode,
+      input,
+      clearUploadingImages,
+      setInput,
+      navigate,
+      isStreaming,
+      uploadingImages,
+      addUiMessage,
+      pushHistory,
+      removeHistoryMessage,
+      setAbortController,
+      setStreaming,
+      updateUiMessageText,
+    ],
+  );
+
+  useEffect(() => {
+    if (mode !== "chat" || isStreaming) {
       return;
     }
 
-    addUiMessage({
-      id: uid("user"),
-      role: "user",
-      text: userDisplayText,
-      content: Array.isArray(userContent)
-        ? userContent.filter(
-            (item): item is MessagePart => item.type === "image_url",
-          )
-        : undefined,
-    });
-
-    const currentUserMessage: ApiMessage = {
-      role: "user",
-      content: userContent,
-    };
-    // 历史消息用于模型上下文，UI 消息用于显示，两者并行维护。
-    pushHistory(currentUserMessage);
-
-    setInput("");
-    clearUploadingImages();
-
-    const assistantId = uid("assistant");
-    // 先插入空的助手消息占位，后续通过 onDelta 实时覆盖。
-    addUiMessage({ id: assistantId, role: "assistant", text: "" });
-
-    const controller = new AbortController();
-    setAbortController(controller);
-    setStreaming(true);
-
-    try {
-      const currentHistory = useChatStore.getState().chatHistory;
-      const finalText = await streamChatCompletion(
-        apiKey,
-        currentHistory,
-        controller.signal,
-        (delta) => updateUiMessageText(assistantId, delta),
-      );
-      pushHistory({
-        role: "assistant",
-        content: finalText || "（未返回内容）",
-      });
-    } catch (error) {
-      // 错误分级：中断/鉴权/限流/网络等类型给出可操作提示。
-      let message = "请求失败，请稍后重试。";
-      let shouldReplace = true;
-
-      if (error instanceof Error && error.name === "AbortError") {
-        removeHistoryMessage(currentUserMessage);
-        const currentText = useChatStore
-          .getState()
-          .messages.find((item) => item.id === assistantId)?.text;
-        if (currentText?.trim()) {
-          shouldReplace = false;
-        } else {
-          message = "已停止生成。";
-        }
-      } else {
-        const typedError = error as {
-          status?: number;
-          endpoint?: string;
-          message?: string;
-        };
-        const endpointTip = typedError.endpoint
-          ? `（端点：${escapeHtml(typedError.endpoint)}）`
-          : "";
-
-        if (typedError.status === 401 || typedError.status === 403) {
-          localStorage.removeItem(API_KEY_STORAGE);
-          message = `鉴权失败：API Key 无效、过期或无权限。已清除本地 Key，请重新写入 LINGXI_API_KEY 后再发送。${endpointTip}`;
-        } else if (typedError.status === 429) {
-          message = `请求频率或额度受限（429）。请稍后重试，或检查百炼账号额度。${endpointTip}`;
-        } else if (typedError.status === 400 && hasImages) {
-          message = `图片识别请求被拒绝（400）。请确认当前账号开通了视觉模型，并检查模型名是否可用（当前默认 qwen-vl-plus）。${endpointTip}`;
-        } else if (typedError.message?.includes("Failed to fetch")) {
-          message = `网络请求失败。若控制台出现 ERR_PROXY_CONNECTION_FAILED，可关闭代理或将 dashscope.aliyuncs.com、dashscope-intl.aliyuncs.com 设为直连后重试。${endpointTip}`;
-        } else if (typedError.message) {
-          message = `请求失败：${typedError.message}${endpointTip}`;
-        }
-      }
-
-      if (shouldReplace) {
-        updateUiMessageText(assistantId, message);
-      }
-    } finally {
-      // 无论成功失败都恢复按钮状态。
-      setAbortController(null);
-      setStreaming(false);
+    const state = location.state as RouteState | null;
+    const draftPrompt = state?.draftPrompt?.trim();
+    if (!draftPrompt) {
+      return;
     }
-  };
+
+    const token = `${location.key}:${draftPrompt}`;
+    if (routePromptTokenRef.current === token) {
+      return;
+    }
+
+    routePromptTokenRef.current = token;
+    void sendMessage(draftPrompt);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [
+    mode,
+    isStreaming,
+    location.key,
+    location.pathname,
+    location.state,
+    navigate,
+    sendMessage,
+  ]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送，Shift + Enter 换行。
@@ -321,11 +402,13 @@ function App() {
 
       <main className="app">
         <WelcomeSection
-          hidden={messages.length > 0}
+          hidden={mode === "chat" ? messages.length > 0 : false}
           disabled={isStreaming}
           onPrompt={(prompt) => void sendMessage(prompt)}
         />
-        <ChatPanel messages={messages} isStreaming={isStreaming} />
+        {mode === "chat" ? (
+          <ChatPanel messages={messages} isStreaming={isStreaming} />
+        ) : null}
       </main>
 
       <Composer
