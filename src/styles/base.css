@@ -1,0 +1,74 @@
+/*
+ * 文件功能：全局基础样式，定义重置规则、主容器布局、背景和通用动画。
+ * 设计思路：
+ * 1. 基础层只放跨组件通用能力，避免业务样式污染全局。
+ * 2. 使用 app-bg 与 app 形成固定背景 + 内容层结构，保证视觉稳定。
+ * 3. 动画统一在基础层定义，组件通过类名复用。
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  transition:
+    background 0.25s ease,
+    color 0.25s ease;
+}
+
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(
+      circle at 10% 5%,
+      rgba(80, 127, 255, 0.24),
+      transparent 38%
+    ),
+    radial-gradient(
+      circle at 90% 20%,
+      rgba(69, 169, 255, 0.12),
+      transparent 30%
+    ),
+    linear-gradient(170deg, var(--bg-grad-1), var(--bg-grad-2) 40%, var(--bg));
+}
+
+.app {
+  max-width: 1280px;
+  margin: 0 auto;
+  min-height: 100svh;
+  padding: 32px 24px 148px;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

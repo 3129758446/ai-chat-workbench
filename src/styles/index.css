@@ -1,0 +1,13 @@
+/*
+ * 文件功能：样式聚合入口，按层次引入主题、基础、页面区块与响应式样式。
+ * 设计思路：
+ * 1. 使用单入口确保样式加载顺序稳定：变量 -> 基础 -> 组件块 -> 响应式。
+ * 2. 业务组件只依赖类名，不直接感知样式文件拆分策略。
+ */
+
+@import "./theme.css";
+@import "./base.css";
+@import "./welcome.css";
+@import "./chat.css";
+@import "./composer.css";
+@import "./responsive.css";

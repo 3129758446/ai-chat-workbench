@@ -1,0 +1,134 @@
+/*
+ * 文件功能：欢迎区样式，包含标题、副标题、快捷卡片与品牌动效。
+ * 设计思路：
+ * 1. 欢迎区承载空会话态的第一视觉，强调识别度和引导性。
+ * 2. 卡片采用网格布局，兼顾多列展示与移动端折叠。
+ * 3. 标题渐变动画用于增强品牌记忆，但控制节奏避免喧宾夺主。
+ */
+
+.welcome {
+  animation: rise 0.6s ease;
+  min-height: calc(100svh - 220px);
+}
+
+.welcome.hidden {
+  display: none;
+}
+
+.welcome-title {
+  margin: 0;
+  font-family: "Outfit", "Noto Sans SC", sans-serif;
+  font-size: clamp(44px, 6vw, 64px);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+
+.welcome-title .title-gradient {
+  display: inline-block;
+  background-image: linear-gradient(
+    100deg,
+    #0aa0ff 0%,
+    #6f7bff 45%,
+    #b64dff 100%
+  );
+  background-size: 200% auto;
+  background-position: 0 50%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: title-shift 4s ease-in-out infinite;
+}
+
+@keyframes title-shift {
+  0% {
+    background-position: 0 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+.welcome-subtitle {
+  margin: 10px 0 36px;
+  font-size: clamp(26px, 4vw, 44px);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.quick-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.quick-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(56, 69, 106, 0.82);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  text-align: left;
+  min-height: 164px;
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.quick-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+[data-theme="light"] .quick-card {
+  background: rgba(223, 232, 255, 0.95);
+}
+
+.quick-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(123, 152, 255, 0.72);
+}
+
+.card-text {
+  font-size: 23px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.card-icon {
+  margin-left: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: #091331;
+}
+
+.icon-blue {
+  color: #3f92ff;
+}
+
+.icon-green {
+  color: #6adb53;
+}
+
+.icon-yellow {
+  color: #ffca45;
+}
+
+.icon-purple {
+  color: #8f69ff;
+}

@@ -1,3 +1,10 @@
+/*
+ * 文件功能：Vite 模板遗留的 App 样式文件（当前业务界面已使用 styles 目录下的模块样式）。
+ * 设计思路：
+ * 1. 文件保留用于追溯初始模板结构，避免迁移过程中误删造成对比困难。
+ * 2. 后续可在样式收敛完成后统一清理。
+ */
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
@@ -167,7 +174,7 @@
 
   &::before,
   &::after {
-    content: '';
+    content: "";
     position: absolute;
     top: -4.5px;
     border: 5px solid transparent;
