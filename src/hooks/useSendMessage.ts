@@ -7,6 +7,26 @@
  * 4. 通过 useCallback 固定函数引用，避免 effect 依赖因函数地址变化触发重复执行。
  */
 
+// 1.判断模式（首页 / 聊天页）
+// 2.校验内容（有没有文字或图片）
+// 3.校验 API Key
+// 4.处理图片（转成可发送格式）
+// 5.把用户消息加到界面
+// 6.把用户消息加到历史记录
+// 7.清空输入框
+// 8.创建一条空的 AI 消息
+// 9.发起流式请求，一边收一边渲染
+// 10.接收完成 → 保存 AI 消息到历史
+// 11.异常处理（停止、报错、无网络、鉴权失败）
+
+// 核心设计思想：
+// 1.先更新 UI，再请求接口 -> 让用户感觉响应很快
+// 2.UI 消息和历史消息分开维护 -> UI：负责显示|历史：给 AI 上下文用
+// 3.错误分级提示 -> 不同错误给不同提示
+// 4.支持停止生成-> 用 AbortController
+// 5.支持图片 + 文本一起发送
+// 6.首页只跳转，聊天页才发送
+
 import { useCallback } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { API_KEY_STORAGE } from "../constants";
@@ -27,31 +47,27 @@ import {
 import { buildUserMessageContent } from "../utils/messageContent";
 
 interface UseSendMessageParams {
-  // 当前页面模式：首页仅负责收集问题并跳转，聊天页才实际发请求。
-  mode: "home" | "chat";
-  // 输入框当前文本。
-  input: string;
-  // 当前是否在流式响应中，用于防并发发送。
-  isStreaming: boolean;
-  // 待发送图片列表。
-  uploadingImages: UploadingImage[];
-  // 路由跳转函数（首页 prompt 跳转到聊天页）。
-  navigate: NavigateFunction;
-  // 清理待发送图片。
+  mode: "home" | "chat"; // 当前页面模式：首页仅负责收集问题并跳转，聊天页才实际发请求
+  input: string; // 输入框当前文本
+  isStreaming: boolean; // 当前是否在流式响应中，用于防并发发送
+  uploadingImages: UploadingImage[]; // 待发送图片列表
+  navigate: NavigateFunction; // 路由跳转函数（首页 prompt 跳转到聊天页）
+
+  // 清理待发送图片
   clearUploadingImages: () => void;
-  // 设置输入框文本。
+  // 设置输入框文本
   setInput: (value: string) => void;
-  // 添加 UI 消息。
+  // 添加 UI 消息
   addUiMessage: (message: UiMessage) => void;
-  // 更新某条 UI 消息文本（流式覆盖）。
+  // 更新某条 UI 消息文本（流式覆盖）
   updateUiMessageText: (id: string, text: string) => void;
-  // 追加模型上下文历史。
+  // 追加模型上下文历史
   pushHistory: (message: ApiMessage) => void;
-  // 从历史中移除指定消息（用于中断回滚）。
+  // 从历史中移除指定消息（用于中断回滚）
   removeHistoryMessage: (message: ApiMessage) => void;
-  // 设置/清空请求控制器。
+  // 设置/清空请求控制器
   setAbortController: (controller: AbortController | null) => void;
-  // 设置流式状态。
+  // 设置流式状态
   setStreaming: (value: boolean) => void;
 }
 
@@ -75,28 +91,29 @@ export function useSendMessage({
     const inputValue = window.prompt(
       "未检测到本地 API Key，请输入你的 LINGXI_API_KEY：",
     );
+    // 校验并返回 Key。输入为空或仅有空白时视为取消，返回空字符串。
     const nextKey = normalizeApiKey(inputValue);
     if (!nextKey) {
       return "";
     }
-
     localStorage.setItem(API_KEY_STORAGE, nextKey);
     return nextKey;
   };
 
   return useCallback(
-    async (cardPrompt?: string) => {
-      // 首页模式：不请求模型，只把草稿问题带到 /chat 页面触发首条发送。
+    async (cardPrompt?: string) => {  
+      // 1. 首页只负责跳转到聊天页，不发送请求，只把草稿问题带到 /chat 页面触发首条发送。
       if (mode === "home") {
+        // 优先使用cardPrompt（如果存在），否则使用输入框内容。
+        // 这样可以支持首页快捷卡片发送，同时保持输入框内容的正确性。
         const prompt = (
           typeof cardPrompt === "string" ? cardPrompt : input
         ).trim();
         const hasImages = uploadingImages.length > 0;
-        // 首页支持“文本发送”与“仅图片发送”两种入口。
+        // 文本和图片都为空时不触发跳转。
         if (!prompt && !hasImages) {
           return;
         }
-
         // 主页跳转到聊天页时保留 uploadingImages，由聊天页首次发送流程消费。
         setInput("");
         navigate("/chat", {
@@ -105,7 +122,7 @@ export function useSendMessage({
         return;
       }
 
-      // 聊天模式：流式阶段禁止并发发送，避免历史上下文错乱。
+      // 2.如果正在流式输出，禁止重复发送
       if (isStreaming) {
         return;
       }
@@ -114,11 +131,13 @@ export function useSendMessage({
       const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
       const text = rawText.trim();
       const hasImages = uploadingImages.length > 0;
-      // 文本和图片都为空时不触发请求。
+
+      // 3.检查是否有内容，文本和图片都为空时不触发请求。
       if (!text && !hasImages) {
         return;
       }
 
+      //4.检查 API Key
       let apiKey = ensureApiKey();
       if (!apiKey) {
         // 首次或 Key 被清空时，引导用户输入并立即持久化。
@@ -137,9 +156,12 @@ export function useSendMessage({
       const images = [...uploadingImages];
       const userDisplayText = text || `（发送了 ${images.length} 张图片）`;
 
+      //5.构建发送内容（处理图片），把文本 + 图片转成接口需要的格式
       let userContent: string | MessagePart[];
       try {
         // 在真正发送前完成图片编码，失败则给出即时错误提示。
+        //buildUserMessageContent，专门用来构建 “用户发送内容” 的工具函数，负责把文本和图片转成接口需要的格式（纯文本或多模态片段数组）。
+        // 如果图片处理失败，会抛出异常并在界面上显示错误信息，避免进入请求阶段才发现问题。
         userContent = await buildUserMessageContent(text, images);
       } catch (error) {
         addUiMessage({
@@ -150,6 +172,7 @@ export function useSendMessage({
         return;
       }
 
+      //6. 把用户消息加到界面
       addUiMessage({
         id: uid("user"),
         role: "user",
@@ -161,46 +184,53 @@ export function useSendMessage({
             )
           : undefined,
       });
-
+      // 构建用户消息内容。
       const currentUserMessage: ApiMessage = {
         role: "user",
         content: userContent,
       };
-      // 历史消息用于模型上下文，UI 消息用于显示，两者并行维护。
+
+      //7.把用户消息加入模型上下文历史，
+      //历史消息用于模型上下文，UI 消息用于显示，两者并行维护。
       pushHistory(currentUserMessage);
 
+      //8.清空输入框和待发送图片
       setInput("");
       clearUploadingImages();
 
+      //9.先插入空的助手消息占位，后续通过 onDelta 实时覆盖文本，实现流式打字效果
       const assistantId = uid("assistant");
-      // 先插入空的助手消息占位，后续通过 onDelta 实时覆盖。
       addUiMessage({ id: assistantId, role: "assistant", text: "" });
 
-      const controller = new AbortController();
-      setAbortController(controller);
-      setStreaming(true);
+      const controller = new AbortController(); // 创建控制器实例，用于可能的请求中断操作
+      setAbortController(controller);  // 保存控制器实例以便后续可能的中断操作
+      setStreaming(true); // 设置流式状态，禁止重复发送并显示生成中状态
 
       try {
         // 读取最新历史，确保包含刚写入的 user message。
         const currentHistory = useChatStore.getState().chatHistory;
+        // 10.发起流式请求（核心中的核心）
+        // 每收到一段文字，就调用 updateUiMessageText，把文字追加到 AI 消息里 → 实现打字机效果
         const finalText = await streamChatCompletion(
           apiKey,
-          currentHistory,
-          controller.signal,
+          currentHistory,  // 获取当前会话历史
+          controller.signal,  // 传入控制器的 signal，以支持请求中断
           // 流式增量覆盖同一条 assistant 消息，实现“打字中”体验。
           (delta) => updateUiMessageText(assistantId, delta),
         );
+        // 11.请求完成，把 AI 消息加入历史
         pushHistory({
           role: "assistant",
           content: finalText || "（未返回内容）",
         });
       } catch (error) {
+        // 12.错误处理
         // 错误分级：中断/鉴权/限流/网络等类型给出可操作提示。
         let message = "请求失败，请稍后重试。";
-        let shouldReplace = true;
+        let shouldReplace = true; // 默认错误消息会替换 AI 消息内容，但某些情况下（如用户主动停止但已有部分内容）我们选择保留已有文本并仅追加提示。
 
         if (error instanceof Error && error.name === "AbortError") {
-          // 用户手动停止时回滚本轮 user 历史，避免污染后续上下文。
+          // 1.用户手动停止时回滚本轮 user 历史，避免污染后续上下文。
           removeHistoryMessage(currentUserMessage);
           const currentText = useChatStore
             .getState()
@@ -220,7 +250,7 @@ export function useSendMessage({
             ? `（端点：${escapeHtml(typedError.endpoint)}）`
             : "";
 
-          // 鉴权失败时清理本地 Key，避免后续请求重复失败。
+          // 2.鉴权失败时清理本地 Key，避免后续请求重复失败。
           if (typedError.status === 401 || typedError.status === 403) {
             localStorage.removeItem(API_KEY_STORAGE);
             message = `鉴权失败：API Key 无效、过期或无权限。已清除本地 Key，请重新写入 LINGXI_API_KEY 后再发送。${endpointTip}`;
@@ -261,3 +291,11 @@ export function useSendMessage({
     ],
   );
 }
+
+// 核心设计思想：
+// 1.先更新 UI，再请求接口 -> 让用户感觉响应很快
+// 2.UI 消息和历史消息分开维护 -> UI：负责显示|历史：给 AI 上下文用
+// 3.错误分级提示 -> 不同错误给不同提示
+// 4.支持停止生成-> 用 AbortController
+// 5.支持图片 + 文本一起发送
+// 6.首页只跳转，聊天页才发送

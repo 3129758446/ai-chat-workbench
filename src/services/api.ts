@@ -32,7 +32,7 @@ function hasImageInMessages(messages: ApiMessage[]): boolean {
 // 根据消息内容动态切换文本模型/视觉模型。
 function resolveModelByMessages(messages: ApiMessage[]): string {
   return hasImageInMessages(messages) ? VISION_MODEL_NAME : MODEL_NAME;
-}
+}  
 
 // 组装端点列表：自定义端点优先，默认端点作为回退。
 function getApiEndpoints(): string[] {

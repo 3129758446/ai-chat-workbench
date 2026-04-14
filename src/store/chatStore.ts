@@ -31,16 +31,17 @@ interface ChatState {
   chatHistory: ApiMessage[];
   // 待发送图片列表。
   uploadingImages: UploadingImage[];
+
   setInput: (value: string) => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   setStreaming: (value: boolean) => void;
-  setAbortController: (controller: AbortController | null) => void;
-  addUiMessage: (message: UiMessage) => void;
-  updateUiMessageText: (id: string, text: string) => void;
-  pushHistory: (message: ApiMessage) => void;
-  removeHistoryMessage: (message: ApiMessage) => void;
-  clearConversation: () => void;
+  setAbortController: (controller: AbortController | null) => void; // 用于取消请求。
+  addUiMessage: (message: UiMessage) => void; // 添加用户消息
+  updateUiMessageText: (id: string, text: string) => void; // 更新消息内容
+  pushHistory: (message: ApiMessage) => void;  // 添加历史消息
+  removeHistoryMessage: (message: ApiMessage) => void; // 移除历史消息（中断时回滚）
+  clearConversation: () => void; // 清空会话（消息和历史）
   addUploadingImages: (images: UploadingImage[]) => void;
   removeUploadingImage: (id: string) => void;
   clearUploadingImages: () => void;
@@ -56,6 +57,7 @@ export const useChatStore = create<ChatState>((set) => ({
   chatHistory: [],
   uploadingImages: [],
 
+  // 输入框文本更新。
   setInput: (value) => set({ input: value }),
   // 主题切换写入 localStorage，保持刷新后偏好一致。
   setTheme: (theme) => {
@@ -76,6 +78,7 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({
       messages: [...state.messages, message],
     })),
+    
   // 流式过程中按消息 ID 覆盖内容。
   updateUiMessageText: (id, text) =>
     set((state) => ({
@@ -84,7 +87,7 @@ export const useChatStore = create<ChatState>((set) => ({
       ),
     })),
 
-  // 历史消息顺序追加，用于保留模型上下文。
+  // 历史消息顺序追加，用于保留  模型上下文。
   pushHistory: (message) =>
     set((state) => ({
       chatHistory: [...state.chatHistory, message],
@@ -92,18 +95,20 @@ export const useChatStore = create<ChatState>((set) => ({
   // 中断流式时移除当轮用户消息，防止历史污染后续回答。
   removeHistoryMessage: (target) =>
     set((state) => {
+      // 从后往前找，确保删除最近的一条匹配消息
       const index = state.chatHistory.lastIndexOf(target);
       if (index < 0) {
         return state;
       }
-      const next = [...state.chatHistory];
-      next.splice(index, 1);
-      return { chatHistory: next };
+      const next = [...state.chatHistory]; // 创建历史副本
+      next.splice(index, 1); // 删除目标消息
+      return { chatHistory: next }; // 更新状态
     }),
 
   // 清空会话时统一释放上传预览 URL，防止内存泄漏。
   clearConversation: () =>
     set((state) => {
+      // 释放上传预览 URL
       state.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));
       return {
         input: "",
@@ -118,8 +123,8 @@ export const useChatStore = create<ChatState>((set) => ({
   // 批量加入用户选择的待发送图片。
   addUploadingImages: (images) =>
     set((state) => ({
-      uploadingImages: [...state.uploadingImages, ...images],
-    })),
+      uploadingImages: [...state.uploadingImages, ...images], // 累积待发送图片，支持多次添加
+    })), 
   // 删除单张待发送图片并释放对应 URL。
   removeUploadingImage: (id) =>
     set((state) => {

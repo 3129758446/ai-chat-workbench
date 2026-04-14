@@ -21,19 +21,20 @@ import { uid } from "./utils/helpers";
 
 type AppMode = "home" | "chat";
 
+// 路由状态类型定义，包含首页跳转时的草稿提示和自动发送标志。
 interface RouteState {
-  draftPrompt?: string;
-  shouldAutoSend?: boolean;
+  draftPrompt?: string; // 首页跳转时，保存草稿提示。
+  shouldAutoSend?: boolean; // 首页跳转时，是否自动发送（默认为 false，仅预填输入框）。
 }
 
 interface AppProps {
-  mode?: AppMode;
-}
+  mode?: AppMode; // 页面模式，决定显示欢迎页还是聊天页，默认为聊天页。
+} 
 
 function App({ mode = "chat" }: AppProps) {
-  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const routePromptTokenRef = useRef("");
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null); // 输入框 DOM 引用，用于动态调整高度和聚焦。
+  const fileInputRef = useRef<HTMLInputElement | null>(null); // 隐藏的文件输入，用于触发系统文件选择对话框。
+  const routePromptTokenRef = useRef(""); // 路由提示 token，避免因 location.state 变化导致重复发送同一提示。
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -41,7 +42,7 @@ function App({ mode = "chat" }: AppProps) {
     input,
     theme,
     isStreaming,
-    abortController,
+    abortController, // 用于取消当前请求。
     messages,
     uploadingImages,
     setInput,

@@ -18,9 +18,9 @@ const ICONS = ["✎", "✦", "◉", "⌘"];
 const ICON_CLASSES = ["icon-blue", "icon-green", "icon-yellow", "icon-purple"];
 
 export function WelcomeSection({
-  hidden,
-  disabled,
-  onPrompt,
+  hidden, // 是否隐藏组件
+  disabled, // 是否禁用交互（流式中禁用，防止重复发送）
+  onPrompt, // 回调预置问题点击事件
 }: WelcomeSectionProps) {
   return (
     // hidden 时仍保留组件结构，依赖样式控制显示，便于动效过渡。

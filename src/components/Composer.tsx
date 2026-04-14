@@ -6,25 +6,32 @@
  * 3. 上传列表作为受控渲染，删除动作通过回调交给上层统一管理资源释放。
  */
 
+// 显示输入框内容
+// 显示待发送图片预览
+// 显示发送 / 上传 / 停止 / 主题 / 清空按钮
+// 控制发送按钮是否可点击
+// 用户操作后，通知父组件
+
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import type { ThemeMode, UploadingImage } from "../types/chat";
 
 interface ComposerProps {
   input: string;
   theme: ThemeMode;
-  isStreaming: boolean;
-  uploadingImages: UploadingImage[];
-  messageInputRef: RefObject<HTMLTextAreaElement | null>;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  onInputChange: (value: string) => void;
-  onSend: () => void;
-  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
-  onUploadClick: () => void;
-  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onRemoveImage: (id: string) => void;
-  onStop: () => void;
-  onToggleTheme: () => void;
-  onClearConversation: () => void;
+  isStreaming: boolean; // AI 是否正在打字
+  uploadingImages: UploadingImage[]; // 待发送图片列表
+  messageInputRef: RefObject<HTMLTextAreaElement | null>;  // 输入框 DOM 引用
+  fileInputRef: RefObject<HTMLInputElement | null>; // 文件上传 DOM 引用
+
+  onInputChange: (value: string) => void; // 输入框文字变化
+  onSend: () => void; // 发送消息 
+  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void; // 输入框按键事件
+  onUploadClick: () => void; // 点击上传按钮，触发文件选择
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void; // 文件选择后事件
+  onRemoveImage: (id: string) => void; // 移除待发送图片
+  onStop: () => void; // 停止 AI 打字
+  onToggleTheme: () => void; // 切换主题
+  onClearConversation: () => void; // 清空对话
 }
 
 export function Composer({
@@ -44,6 +51,7 @@ export function Composer({
   onToggleTheme,
   onClearConversation,
 }: ComposerProps) {
+  
   // 文本非空或有待发送图片，且不在流式阶段时允许发送。
   const canSend =
     !isStreaming && (input.trim().length > 0 || uploadingImages.length > 0);
@@ -69,6 +77,7 @@ export function Composer({
 
       <div className="composer-row">
         <div className="composer">
+          {/* 输入框 */}
           <textarea
             ref={messageInputRef}
             id="messageInput"
@@ -118,6 +127,7 @@ export function Composer({
           </div>
         </div>
 
+        {/* 外部操作按钮 */}
         <div className="outer-actions">
           <button
             className="circle-btn"

@@ -26,7 +26,7 @@ export type MessagePart = ImagePart | TextPart;
 
 // 提交给模型的消息结构（可为纯文本，也可为多模态片段数组）。
 export interface ApiMessage {
-  role: Role;
+  role: Role; // 消息角色，决定模型响应风格。
   content: string | MessagePart[];
 }
 
@@ -34,7 +34,7 @@ export interface ApiMessage {
 export interface UiMessage {
   id: string;
   role: Role;
-  text: string;
+  text: string; // 消息内容，用于页面展示。
   content?: MessagePart[];
 }
 

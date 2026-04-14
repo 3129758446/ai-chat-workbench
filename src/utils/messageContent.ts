@@ -11,8 +11,8 @@ import type { MessagePart, UploadingImage } from "../types/chat";
 function fileToDataUrl(file: File): Promise<string> {
   // 将上传文件转为 data URL，便于直接以内联方式提交到多模态接口。
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
+    const reader = new FileReader(); // 创建 FileReader 对象
+    reader.onload = () => resolve(String(reader.result || "")); // 读取成功回调，返回 data URL
     reader.onerror = () =>
       reject(new Error(`读取图片失败：${file.name || "unknown"}`));
     reader.readAsDataURL(file);
@@ -37,7 +37,8 @@ export async function buildUserMessageContent(
 
   for (const item of images) {
     // 顺序读取图片，保证内容顺序与用户上传顺序一致。
-    const dataUrl = await fileToDataUrl(item.file);
+    // fileToDataUrl 
+    const dataUrl = await fileToDataUrl(item.file); // 可能抛出异常，由调用方捕获并提示用户。
     parts.push({ type: "image_url", image_url: { url: dataUrl } });
   }
 

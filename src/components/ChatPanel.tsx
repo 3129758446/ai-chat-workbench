@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import type { UiMessage } from "../types/chat";
+// markdown 渲染和代码块增强工具函数。
 import { enhanceCodeBlocks, renderMarkdownToHtml } from "../utils/markdown";
 
 interface ChatPanelProps {
@@ -87,10 +88,11 @@ export function ChatPanel({ messages, isStreaming }: ChatPanelProps) {
     <section className="chat-panel" aria-live="polite">
       {messages.map((message, index) => {
         // 只有最后一条助手消息在流式阶段需要显示特殊状态。
+        // 判断是否显示「AI 正在打字」
         const assistantStreaming =
-          message.role === "assistant" &&
-          isStreaming &&
-          index === messages.length - 1;
+          message.role === "assistant" &&  // 是 AI 发的
+          isStreaming &&                   // 正在流式输出
+          index === messages.length - 1;   // 是最后一条
 
         return (
           <div
