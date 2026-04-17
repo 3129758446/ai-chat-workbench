@@ -22,6 +22,7 @@ export interface TextPart {
   text: string;
 }
 
+// 消息内容片段，可以是文本或图片，支持多模态输入。
 export type MessagePart = ImagePart | TextPart;
 
 // 提交给模型的消息结构（可为纯文本，也可为多模态片段数组）。
@@ -35,7 +36,7 @@ export interface UiMessage {
   id: string;
   role: Role;
   text: string; // 消息内容，用于页面展示。
-  content?: MessagePart[];
+  content?: MessagePart[]; // 可选的多模态内容片段，保留原始结构以支持图片展示。
 }
 
 // 本地上传图片的中间态，url 用于预览，file 用于最终编码发送。

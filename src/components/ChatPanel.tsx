@@ -41,7 +41,7 @@ function AssistantMessage({
     <div className="bubble ai">
       {showTyping ? (
         <div className="markdown-body">
-          <span className="typing-dots">
+          <span className="typing-dots">  
             <span></span>
             <span></span>
             <span></span>

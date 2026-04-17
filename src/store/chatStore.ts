@@ -92,6 +92,7 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({
       chatHistory: [...state.chatHistory, message],
     })),
+    
   // 中断流式时移除当轮用户消息，防止历史污染后续回答。
   removeHistoryMessage: (target) =>
     set((state) => {

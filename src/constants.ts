@@ -9,8 +9,8 @@
 
 // 默认接口端点：优先国内，失败后自动回退到国际端点。
 export const DEFAULT_API_ENDPOINTS = [
-  "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-  "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "/api/chat/completions",
+  "/api-intl/chat/completions",
 ];
 
 // 文本模型：用于纯文字对话。
