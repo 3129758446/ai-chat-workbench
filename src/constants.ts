@@ -8,6 +8,7 @@
  */
 
 // 默认接口端点：优先国内，失败后自动回退到国际端点。
+// 前端发请求时走当前站点域名，不再由浏览器直接请求外域。
 export const DEFAULT_API_ENDPOINTS = [
   "/api/chat/completions",
   "/api-intl/chat/completions",

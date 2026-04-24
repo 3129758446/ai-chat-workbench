@@ -51,8 +51,8 @@ interface UseSendMessageParams {
   input: string; // 输入框当前文本
   isStreaming: boolean; // 当前是否在流式响应中，用于防并发发送
   uploadingImages: UploadingImage[]; // 待发送图片列表
-  navigate: NavigateFunction; // 路由跳转函数（首页 prompt 跳转到聊天页）
 
+  navigate: NavigateFunction; // 路由跳转函数（首页 prompt 跳转到聊天页）
   // 清理待发送图片
   clearUploadingImages: () => void;
   // 设置输入框文本
@@ -86,6 +86,8 @@ export function useSendMessage({
   setAbortController,
   setStreaming,
 }: UseSendMessageParams) {
+
+  // 当本地缺少 Key 时即时弹窗录入，降低首次使用门槛。
   const promptForApiKey = (): string => {
     // 当本地缺少 Key 时即时弹窗录入，降低首次使用门槛。
     const inputValue = window.prompt(
@@ -102,9 +104,10 @@ export function useSendMessage({
 
   return useCallback(
     async (cardPrompt?: string) => {  
-      // 1. 首页只负责跳转到聊天页，不发送请求，只把草稿问题带到 /chat 页面触发首条发送。
+
+      // 1. 首页 ———— 只负责跳转到聊天页，不发送请求，只把草稿问题带到 /chat 页面触发首条发送。
       if (mode === "home") {
-        // 优先使用cardPrompt（如果存在），否则使用输入框内容。
+        // 优先使用cardPrompt【首页卡牌信息】（如果存在），否则使用输入框内容。
         // 这样可以支持首页快捷卡片发送，同时保持输入框内容的正确性。
         const prompt = (
           typeof cardPrompt === "string" ? cardPrompt : input
@@ -127,12 +130,11 @@ export function useSendMessage({
         return;
       }
 
+      // 3.检查是否有内容，文本和图片都为空时不触发请求。
       // cardPrompt 优先于输入框内容（用于快捷卡片发送）。
       const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
       const text = rawText.trim();
       const hasImages = uploadingImages.length > 0;
-
-      // 3.检查是否有内容，文本和图片都为空时不触发请求。
       if (!text && !hasImages) {
         return;
       }
@@ -162,7 +164,7 @@ export function useSendMessage({
         // 在真正发送前完成图片编码，失败则给出即时错误提示。
         //buildUserMessageContent，专门用来构建 “用户发送内容” 的工具函数，负责把文本和图片转成接口需要的格式（纯文本或多模态片段数组）。
         // 如果图片处理失败，会抛出异常并在界面上显示错误信息，避免进入请求阶段才发现问题。
-        userContent = await buildUserMessageContent(text, images);
+        userContent = await buildUserMessageContent(text, images); // 构建用户消息内容，可能包含文本和图片片段
       } catch (error) {
         addUiMessage({
           id: uid("assistant"),
@@ -176,11 +178,11 @@ export function useSendMessage({
       addUiMessage({
         id: uid("user"),
         role: "user",
-        text: userDisplayText,
+        text: userDisplayText,  // 显示用户输入的文本，包含图片数量提示，避免仅图片时界面无反馈
         // UI 仅展示图片片段；文本统一由 message.text 呈现。
         content: Array.isArray(userContent)
           ? userContent.filter(
-              (item): item is MessagePart => item.type === "image_url",
+              (item): item is MessagePart => item.type === "image_url",  // 过滤掉非图片片段，UI 消息只保留图片片段用于展示，文本内容由 message.text 统一呈现，避免重复显示文本信息。
             )
           : undefined,
       });
@@ -241,6 +243,7 @@ export function useSendMessage({
             message = "已停止生成。";
           }
         } else {
+          //其他错误，根据错误类型和信息进行分级提示，帮助用户理解问题并指导下一步操作。
           const typedError = error as {
             status?: number;
             endpoint?: string;

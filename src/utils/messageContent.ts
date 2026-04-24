@@ -12,13 +12,17 @@ function fileToDataUrl(file: File): Promise<string> {
   // 将上传文件转为 data URL，便于直接以内联方式提交到多模态接口。
   return new Promise((resolve, reject) => {
     const reader = new FileReader(); // 创建 FileReader 对象
-    reader.onload = () => resolve(String(reader.result || "")); // 读取成功回调，返回 data URL
+     // 1. 先注册成功回调（等读完通知我）
+    reader.onload = () => resolve(String(reader.result || "")); // 读取成功回调，返回data URL，reader.result就是base64字符串
+    // 2. 再注册失败回调
     reader.onerror = () =>
       reject(new Error(`读取图片失败：${file.name || "unknown"}`));
-    reader.readAsDataURL(file);
+    // 3. 最后才开始读取文件
+    reader.readAsDataURL(file); // 开始读取文件，结果会在 onload 或 onerror 中返回
   });
 }
 
+// 构建用户消息内容：纯文本直接返回，含图片则组装成文本+图片片段的格式。
 export async function buildUserMessageContent(
   text: string,
   images: UploadingImage[],

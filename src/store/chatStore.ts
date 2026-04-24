@@ -59,11 +59,13 @@ export const useChatStore = create<ChatState>((set) => ({
 
   // 输入框文本更新。
   setInput: (value) => set({ input: value }),
+
   // 主题切换写入 localStorage，保持刷新后偏好一致。
   setTheme: (theme) => {
     localStorage.setItem(THEME_STORAGE, theme);
     set({ theme });
   },
+  // 主题切换。
   toggleTheme: () =>
     set((state) => {
       const nextTheme: ThemeMode = state.theme === "dark" ? "light" : "dark";
@@ -73,17 +75,19 @@ export const useChatStore = create<ChatState>((set) => ({
   setStreaming: (value) => set({ isStreaming: value }),
   setAbortController: (controller) => set({ abortController: controller }),
 
-  // 追加一条 UI 消息。
+  // 添加用户消息：将新消息追加到 messages 列表末尾，触发 UI 更新。
+  // 追加一条加一条空的 AI 消息
   addUiMessage: (message) =>
     set((state) => ({
-      messages: [...state.messages, message],
+      messages: [...state.messages, message], //往messages列表末尾添加一条消息
     })),
     
-  // 流式过程中按消息 ID 覆盖内容。
+  // 流式过程中按消息 ID 覆盖内容。 不断调用 updateUiMessageText 往这条消息里填字，实现打字机效果
+  // 确保消息内容正确，避免后续更新被覆盖。
   updateUiMessageText: (id, text) =>
     set((state) => ({
-      messages: state.messages.map((message) =>
-        message.id === id ? { ...message, text } : message,
+      messages: state.messages.map((message) => 
+        message.id === id ? { ...message, text } : message,  //根据 ID 定位到需要更新的消息，其他消息保持不变
       ),
     })),
 
@@ -126,6 +130,7 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({
       uploadingImages: [...state.uploadingImages, ...images], // 累积待发送图片，支持多次添加
     })), 
+
   // 删除单张待发送图片并释放对应 URL。
   removeUploadingImage: (id) =>
     set((state) => {
@@ -137,6 +142,7 @@ export const useChatStore = create<ChatState>((set) => ({
         uploadingImages: state.uploadingImages.filter((item) => item.id !== id),
       };
     }),
+
   // 清空当前待发送图片。
   clearUploadingImages: () =>
     set((state) => {

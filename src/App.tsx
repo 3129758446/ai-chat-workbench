@@ -39,14 +39,14 @@ function App({ mode = "chat" }: AppProps) {
   const location = useLocation();
 
   const {
-    input,
-    theme,
+    input, //  输入框内容，用于页面展示和发送。
+    theme, // 主题，用于页面样式。
     isStreaming,
     abortController, // 用于取消当前请求。
     messages,
     uploadingImages,
     setInput,
-    toggleTheme,
+    toggleTheme,  
     setStreaming,
     setAbortController,
     addUiMessage,
@@ -69,6 +69,7 @@ function App({ mode = "chat" }: AppProps) {
     uploadingImages,
   });
 
+  // 停止当前流式请求：调用 AbortController 的 abort 方法，触发 fetch 的异常分支，进而停止流式更新。
   const stopStreaming = () => {
     // 主动中断当前请求，触发 fetch 的 AbortError 分支。
     if (abortController) {
@@ -77,6 +78,7 @@ function App({ mode = "chat" }: AppProps) {
     }
   };
 
+ // 清空对话：重置消息列表和上传图片，停止任何正在进行的流式请求，并导航回首页（如果当前在聊天页）。
   const handleClearConversation = () => {
     stopStreaming();
     clearConversation();
@@ -86,6 +88,8 @@ function App({ mode = "chat" }: AppProps) {
     }
   };
 
+  // 处理文件选择：从文件输入事件中提取图片文件，生成预览 URL，并添加到上传图片列表中。
+  // 最后重置文件输入的值，以便下次选择同一文件时仍能触发 change 事件。
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     // 仅接收图片文件，并为预览生成对象 URL。
     const files = Array.from(event.target.files || []);
@@ -103,6 +107,7 @@ function App({ mode = "chat" }: AppProps) {
     event.target.value = "";
   };
 
+  // 发送消息：调用 useSendMessage hook 返回的函数，传入当前输入框内容，触发消息发送流程。
   const sendMessage = useSendMessage({
     mode,
     input,
@@ -119,24 +124,28 @@ function App({ mode = "chat" }: AppProps) {
     setStreaming,
   });
 
+  // 首次渲染时，如果当前在聊天页，且处于非流式状态，则尝试从路由状态中获取草稿提示，并触发一次自动发送。
   useEffect(() => {
     if (mode !== "chat" || isStreaming) {
       return;
     }
 
+    // 通过 location.state 传递的路由提示只在首次渲染时生效，且仅触发一次发送，避免重复发送同一提示。
     const state = location.state as RouteState | null;
-    const shouldAutoSend = Boolean(state?.shouldAutoSend);
-    const draftPrompt = state?.draftPrompt?.trim() || "";
+    const shouldAutoSend = Boolean(state?.shouldAutoSend); // 是否自动发送，默认为 false，仅预填输入框。
+    const draftPrompt = state?.draftPrompt?.trim() || ""; // 草稿提示文本，去除首尾空白。
     // 从首页跳转时，无论是文本还是仅图片，都触发一次自动发送。
     if (!shouldAutoSend && !draftPrompt) {
       return;
     }
 
+    // 跳转时，如果当前正在发送，则忽略。
     const token = `${location.key}:${draftPrompt}:${shouldAutoSend ? 1 : 0}`;
     if (routePromptTokenRef.current === token) {
       return;
     }
 
+    // 更新 token，触发发送，并导航到当前路径（去除 state），保证刷新后不再重复发送。
     routePromptTokenRef.current = token;
     void sendMessage(draftPrompt);
     navigate(location.pathname, { replace: true, state: null });
@@ -150,6 +159,7 @@ function App({ mode = "chat" }: AppProps) {
     sendMessage,
   ]);
 
+  // 处理键盘事件：Enter 触发发送，Shift + Enter 换行。
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送，Shift + Enter 换行。
     if (event.key === "Enter" && !event.shiftKey) {
@@ -159,6 +169,7 @@ function App({ mode = "chat" }: AppProps) {
   };
 
   return (
+    // 根组件：包含背景、主内容区（欢迎页或聊天面板）和输入区。
     <>
       <div className="app-bg"></div>
 

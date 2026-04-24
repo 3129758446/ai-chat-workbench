@@ -45,25 +45,28 @@ function getApiEndpoints(): string[] {
   }
 
   // 仅允许同源自定义地址，禁止浏览器直接请求跨域地址。
-  let normalized = custom.replace(/\/+$/, "");
-  if (/^https?:\/\//i.test(normalized)) {
-    const url = new URL(normalized);
-    if (url.origin !== window.location.origin) {
+  let normalized = custom.replace(/\/+$/, ""); // 去除末尾斜杠，保持一致性。
+  if (/^https?:\/\//i.test(normalized)) { // 兼容自定义地址为相对路径的情况。
+    const url = new URL(normalized); // 把绝对 URL 解析为 URL 对象。意义：安全地读取 origin、pathname、search、hash，不靠字符串硬切
+    if (url.origin !== window.location.origin) { //若不是同源，直接回退默认端点列表。意义：拒绝外域自定义地址，避免浏览器发起跨域请求。
       return [...DEFAULT_API_ENDPOINTS];
     }
-    normalized = `${url.pathname}${url.search}${url.hash}`.replace(/\/+$/, "");
+    normalized = `${url.pathname}${url.search}${url.hash}`.replace(/\/+$/, ""); // 只保留路径部分，去除协议和域名，确保后续请求走当前站点域名。
   }
 
+//  校验 normalized 是否以 / 开头。
+// 意义：只接受站内路径，像 abc.com 或 api 这种都不允许。
   if (!normalized.startsWith("/")) {
     return [...DEFAULT_API_ENDPOINTS];
   }
 
-  const customEndpoint = normalized.endsWith("/chat/completions")
+  const customEndpoint = normalized.endsWith("/chat/completions") // 兼容自定义地址为 /chat/completions 的情况。
     ? normalized
     : `${normalized}/chat/completions`;
 
-  return [customEndpoint, ...DEFAULT_API_ENDPOINTS].filter(
-    (item, idx, arr) => arr.indexOf(item) === idx,
+  // 将自定义端点放在默认端点前面，形成优先级顺序。使用 filter 去重，避免重复添加相同的端点。
+  return [customEndpoint, ...DEFAULT_API_ENDPOINTS].filter( 
+    (item, idx, arr) => arr.indexOf(item) === idx, 
   );
 }
 
