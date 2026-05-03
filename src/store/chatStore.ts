@@ -1,152 +1,532 @@
-/**
- * 文件功能：全局聊天状态中心（Zustand），统一管理 UI 状态与会话状态。
- * 设计思路：
- * 1. 把“可跨组件共享且会频繁变化”的状态集中管理，减少 props drilling。
- * 2. 将状态与操作方法放在同一个 store，便于形成可追踪的数据流。
- * 3. UI 展示消息与 API 历史消息分轨存储，既保证展示灵活性又保证请求正确性。
- * 4. 上传图片 URL 的释放逻辑放入 store，避免资源管理散落在多处。
- */
-
 import { create } from "zustand";
-import { THEME_STORAGE } from "../constants";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { CHAT_STORE_STORAGE, THEME_STORAGE } from "../constants";
 import type {
   ApiMessage,
+  Conversation,
+  ConversationDraft,
   ThemeMode,
   UiMessage,
   UploadingImage,
 } from "../types/chat";
+import { uid } from "../utils/helpers";
 
-interface ChatState {
-  // 输入框当前文本。
-  input: string;
-  // 主题模式（用于 body data-theme 与图标切换）。
+interface PersistedChatState {
   theme: ThemeMode;
-  // 当前是否处于流式响应阶段。
-  isStreaming: boolean;
-  // 正在进行请求的控制器，用于中止生成。
-  abortController: AbortController | null;
-  // 页面渲染用消息。
-  messages: UiMessage[];
-  // 发给模型的历史消息。
-  chatHistory: ApiMessage[];
-  // 待发送图片列表。
-  uploadingImages: UploadingImage[];
-
-  setInput: (value: string) => void;
-  setTheme: (theme: ThemeMode) => void;
-  toggleTheme: () => void;
-  setStreaming: (value: boolean) => void;
-  setAbortController: (controller: AbortController | null) => void; // 用于取消请求。
-  addUiMessage: (message: UiMessage) => void; // 添加用户消息
-  updateUiMessageText: (id: string, text: string) => void; // 更新消息内容
-  pushHistory: (message: ApiMessage) => void;  // 添加历史消息
-  removeHistoryMessage: (message: ApiMessage) => void; // 移除历史消息（中断时回滚）
-  clearConversation: () => void; // 清空会话（消息和历史）
-  addUploadingImages: (images: UploadingImage[]) => void;
-  removeUploadingImage: (id: string) => void;
-  clearUploadingImages: () => void;
+  currentConversationId: string | null;
+  orderedConversationIds: string[];
+  conversations: Record<string, ConversationDraft>;
 }
 
-// Store 初始化：提供状态初值和业务动作。
-export const useChatStore = create<ChatState>((set) => ({
-  input: "",
-  theme: (localStorage.getItem(THEME_STORAGE) as ThemeMode) || "dark",
-  isStreaming: false,
-  abortController: null,
-  messages: [],
-  chatHistory: [],
-  uploadingImages: [],
+interface ChatState {
+  theme: ThemeMode;
+  currentConversationId: string | null;
+  orderedConversationIds: string[];
+  conversations: Record<string, Conversation>;
+  abortControllers: Record<string, AbortController | null>;
 
-  // 输入框文本更新。
-  setInput: (value) => set({ input: value }),
+  setTheme: (theme: ThemeMode) => void;
 
-  // 主题切换写入 localStorage，保持刷新后偏好一致。
-  setTheme: (theme) => {
-    localStorage.setItem(THEME_STORAGE, theme);
-    set({ theme });
-  },
-  // 主题切换。
-  toggleTheme: () =>
-    set((state) => {
-      const nextTheme: ThemeMode = state.theme === "dark" ? "light" : "dark";
-      localStorage.setItem(THEME_STORAGE, nextTheme);
-      return { theme: nextTheme };
+  createConversation: (options?: { title?: string }) => string;
+  ensureConversation: (id: string) => void;
+  switchConversation: (id: string) => void;
+  renameConversation: (id: string, title: string) => void;
+  deleteConversation: (id: string) => void;
+  clearConversation: (id: string) => void;
+
+  setDraftInput: (id: string, value: string) => void;
+  addUiMessage: (id: string, message: UiMessage) => void;
+  updateUiMessageText: (id: string, messageId: string, text: string) => void;
+  pushHistory: (id: string, message: ApiMessage) => void;
+  removeHistoryMessage: (id: string, target: ApiMessage) => void;
+
+  addUploadingImages: (id: string, images: UploadingImage[]) => void;
+  removeUploadingImage: (id: string, imageId: string) => void;
+  clearUploadingImages: (id: string) => void;
+
+  setStreaming: (id: string, value: boolean) => void;
+  setAbortController: (id: string, controller: AbortController | null) => void;
+}
+
+function normalizeTheme(theme: string | null | undefined): ThemeMode {
+  return theme === "light" ? "light" : "dark";
+}
+
+const DEFAULT_THEME = normalizeTheme(localStorage.getItem(THEME_STORAGE));
+
+function previewFromContent(content: ApiMessage["content"]): string {
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  const text = content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text.trim())
+    .join(" ")
+    .trim();
+
+  if (text) {
+    return text;
+  }
+
+  const imageCount = content.filter((part) => part.type === "image_url").length;
+  return imageCount ? `[图片] ${imageCount} 张` : "";
+}
+
+function shorten(text: string, max = 48): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
+}
+
+function createConversationRecord(
+  id = uid("conversation"),
+  title = "新会话",
+): Conversation {
+  const now = Date.now();
+  return {
+    id,
+    title,
+    createdAt: now,
+    updatedAt: now,
+    lastMessagePreview: "",
+    draftInput: "",
+    messages: [],
+    chatHistory: [],
+    uploadingImages: [],
+    isStreaming: false,
+  };
+}
+
+function deriveConversationPatch(
+  conversation: Conversation,
+): Partial<Conversation> {
+  const firstUserMessage = conversation.chatHistory.find(
+    (message) => message.role === "user",
+  );
+  const suggestedTitle = shorten(
+    firstUserMessage ? previewFromContent(firstUserMessage.content) : "",
+    24,
+  );
+
+  const lastHistory = conversation.chatHistory[conversation.chatHistory.length - 1];
+  const lastMessagePreview = lastHistory
+    ? shorten(previewFromContent(lastHistory.content))
+    : "";
+
+  return {
+    title: suggestedTitle || conversation.title || "新会话",
+    lastMessagePreview,
+    updatedAt: Date.now(),
+  };
+}
+
+function normalizePersistedConversation(
+  draft: ConversationDraft | undefined,
+  fallbackId: string,
+): Conversation {
+  const base = createConversationRecord(fallbackId);
+  if (!draft) {
+    return base;
+  }
+
+  return {
+    ...base,
+    ...draft,
+    uploadingImages: [],
+    isStreaming: false,
+  };
+}
+
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
+      theme: DEFAULT_THEME,
+      currentConversationId: null,
+      orderedConversationIds: [],
+      conversations: {},
+      abortControllers: {},
+
+      setTheme: (theme) => {
+        localStorage.setItem(THEME_STORAGE, theme);
+        set({ theme });
+      },
+
+      createConversation: (options) => {
+        const conversation = createConversationRecord(undefined, options?.title);
+        set((state) => ({
+          currentConversationId: conversation.id,
+          orderedConversationIds: [conversation.id, ...state.orderedConversationIds],
+          conversations: {
+            ...state.conversations,
+            [conversation.id]: conversation,
+          },
+          abortControllers: {
+            ...state.abortControllers,
+            [conversation.id]: null,
+          },
+        }));
+        return conversation.id;
+      },
+
+      ensureConversation: (id) => {
+        const existing = get().conversations[id];
+        if (existing) {
+          if (get().currentConversationId !== id) {
+            set({ currentConversationId: id });
+          }
+          return;
+        }
+
+        const conversation = createConversationRecord(id);
+        set((state) => ({
+          currentConversationId: id,
+          orderedConversationIds: state.orderedConversationIds.includes(id)
+            ? state.orderedConversationIds
+            : [id, ...state.orderedConversationIds],
+          conversations: {
+            ...state.conversations,
+            [id]: conversation,
+          },
+          abortControllers: {
+            ...state.abortControllers,
+            [id]: null,
+          },
+        }));
+      },
+
+      switchConversation: (id) => {
+        if (!get().conversations[id]) {
+          get().ensureConversation(id);
+          return;
+        }
+        set({ currentConversationId: id });
+      },
+
+      renameConversation: (id, title) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                title: title.trim() || conversation.title,
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        }),
+
+      deleteConversation: (id) =>
+        set((state) => {
+          const nextConversations = { ...state.conversations };
+          const target = nextConversations[id];
+          if (!target) {
+            return state;
+          }
+
+          target.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));
+          delete nextConversations[id];
+
+          const nextAbortControllers = { ...state.abortControllers };
+          nextAbortControllers[id]?.abort();
+          delete nextAbortControllers[id];
+
+          const nextOrderedIds = state.orderedConversationIds.filter(
+            (conversationId) => conversationId !== id,
+          );
+          const nextCurrentId =
+            state.currentConversationId === id
+              ? nextOrderedIds[0] || null
+              : state.currentConversationId;
+
+          return {
+            currentConversationId: nextCurrentId,
+            orderedConversationIds: nextOrderedIds,
+            conversations: nextConversations,
+            abortControllers: nextAbortControllers,
+          };
+        }),
+
+      clearConversation: (id) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+
+          conversation.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));
+
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...createConversationRecord(id, conversation.title),
+                createdAt: conversation.createdAt,
+              },
+            },
+            abortControllers: {
+              ...state.abortControllers,
+              [id]: null,
+            },
+          };
+        }),
+
+      setDraftInput: (id, value) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                draftInput: value,
+              },
+            },
+          };
+        }),
+
+      addUiMessage: (id, message) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                messages: [...conversation.messages, message],
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        }),
+
+      updateUiMessageText: (id, messageId, text) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                messages: conversation.messages.map((message) =>
+                  message.id === messageId ? { ...message, text } : message,
+                ),
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        }),
+
+      pushHistory: (id, message) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+
+          const nextConversation: Conversation = {
+            ...conversation,
+            chatHistory: [...conversation.chatHistory, message],
+          };
+
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...nextConversation,
+                ...deriveConversationPatch(nextConversation),
+              },
+            },
+            orderedConversationIds: [
+              id,
+              ...state.orderedConversationIds.filter(
+                (conversationId) => conversationId !== id,
+              ),
+            ],
+          };
+        }),
+
+      removeHistoryMessage: (id, target) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+
+          const index = conversation.chatHistory.lastIndexOf(target);
+          if (index < 0) {
+            return state;
+          }
+
+          const nextHistory = [...conversation.chatHistory];
+          nextHistory.splice(index, 1);
+          const nextConversation: Conversation = {
+            ...conversation,
+            chatHistory: nextHistory,
+          };
+
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...nextConversation,
+                ...deriveConversationPatch(nextConversation),
+              },
+            },
+          };
+        }),
+
+      addUploadingImages: (id, images) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                uploadingImages: [...conversation.uploadingImages, ...images],
+              },
+            },
+          };
+        }),
+
+      removeUploadingImage: (id, imageId) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+
+          const target = conversation.uploadingImages.find((item) => item.id === imageId);
+          if (target) {
+            URL.revokeObjectURL(target.url);
+          }
+
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                uploadingImages: conversation.uploadingImages.filter(
+                  (item) => item.id !== imageId,
+                ),
+              },
+            },
+          };
+        }),
+
+      clearUploadingImages: (id) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+
+          conversation.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));
+
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                uploadingImages: [],
+              },
+            },
+          };
+        }),
+
+      setStreaming: (id, value) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                isStreaming: value,
+              },
+            },
+          };
+        }),
+
+      setAbortController: (id, controller) =>
+        set((state) => ({
+          abortControllers: {
+            ...state.abortControllers,
+            [id]: controller,
+          },
+        })),
     }),
-  setStreaming: (value) => set({ isStreaming: value }),
-  setAbortController: (controller) => set({ abortController: controller }),
+    {
+      name: CHAT_STORE_STORAGE,
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state): PersistedChatState => ({
+        theme: state.theme,
+        currentConversationId: state.currentConversationId,
+        orderedConversationIds: state.orderedConversationIds,
+        conversations: Object.fromEntries(
+          Object.entries(state.conversations).map(([id, conversation]) => [
+            id,
+            {
+              id: conversation.id,
+              title: conversation.title,
+              createdAt: conversation.createdAt,
+              updatedAt: conversation.updatedAt,
+              lastMessagePreview: conversation.lastMessagePreview,
+              draftInput: conversation.draftInput,
+              messages: conversation.messages,
+              chatHistory: conversation.chatHistory,
+            },
+          ]),
+        ),
+      }),
+      merge: (persisted, current) => {
+        const persistedState = persisted as PersistedChatState | undefined;
+        if (!persistedState) {
+          return current;
+        }
 
-  // 添加用户消息：将新消息追加到 messages 列表末尾，触发 UI 更新。
-  // 追加一条加一条空的 AI 消息
-  addUiMessage: (message) =>
-    set((state) => ({
-      messages: [...state.messages, message], //往messages列表末尾添加一条消息
-    })),
-    
-  // 流式过程中按消息 ID 覆盖内容。 不断调用 updateUiMessageText 往这条消息里填字，实现打字机效果
-  // 确保消息内容正确，避免后续更新被覆盖。
-  updateUiMessageText: (id, text) =>
-    set((state) => ({
-      messages: state.messages.map((message) => 
-        message.id === id ? { ...message, text } : message,  //根据 ID 定位到需要更新的消息，其他消息保持不变
-      ),
-    })),
+        const conversations = Object.fromEntries(
+          Object.entries(persistedState.conversations || {}).map(([id, draft]) => [
+            id,
+            normalizePersistedConversation(draft, id),
+          ]),
+        );
 
-  // 历史消息顺序追加，用于保留  模型上下文。
-  pushHistory: (message) =>
-    set((state) => ({
-      chatHistory: [...state.chatHistory, message],
-    })),
-    
-  // 中断流式时移除当轮用户消息，防止历史污染后续回答。
-  removeHistoryMessage: (target) =>
-    set((state) => {
-      // 从后往前找，确保删除最近的一条匹配消息
-      const index = state.chatHistory.lastIndexOf(target);
-      if (index < 0) {
-        return state;
-      }
-      const next = [...state.chatHistory]; // 创建历史副本
-      next.splice(index, 1); // 删除目标消息
-      return { chatHistory: next }; // 更新状态
-    }),
+        const abortControllers = Object.fromEntries(
+          Object.keys(conversations).map((id) => [id, null]),
+        );
 
-  // 清空会话时统一释放上传预览 URL，防止内存泄漏。
-  clearConversation: () =>
-    set((state) => {
-      // 释放上传预览 URL
-      state.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));
-      return {
-        input: "",
-        isStreaming: false,
-        abortController: null,
-        messages: [],
-        chatHistory: [],
-        uploadingImages: [],
-      };
-    }),
-
-  // 批量加入用户选择的待发送图片。
-  addUploadingImages: (images) =>
-    set((state) => ({
-      uploadingImages: [...state.uploadingImages, ...images], // 累积待发送图片，支持多次添加
-    })), 
-
-  // 删除单张待发送图片并释放对应 URL。
-  removeUploadingImage: (id) =>
-    set((state) => {
-      const target = state.uploadingImages.find((item) => item.id === id);
-      if (target) {
-        URL.revokeObjectURL(target.url);
-      }
-      return {
-        uploadingImages: state.uploadingImages.filter((item) => item.id !== id),
-      };
-    }),
-
-  // 清空当前待发送图片。
-  clearUploadingImages: () =>
-    set((state) => {
-      state.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));
-      return { uploadingImages: [] };
-    }),
-}));
+        return {
+          ...current,
+          ...persistedState,
+          theme: normalizeTheme(persistedState.theme),
+          conversations,
+          abortControllers,
+        };
+      },
+    },
+  ),
+);

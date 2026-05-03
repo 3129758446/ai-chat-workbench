@@ -15,47 +15,62 @@
   z-index: 20;
 }
 
+body.chat-layout .composer-wrap {
+  left: calc(max((100vw - 1480px) / 2, 0px) + 324px);
+  right: calc(max((100vw - 1480px) / 2, 0px) + 24px);
+  transform: none;
+  width: auto;
+  max-width: none;
+}
+
 .composer-row {
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: stretch;
-  gap: 10px;
+  align-items: end;
+  gap: 8px;
 }
 
 .composer {
   display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
   min-height: 74px;
   border-radius: 22px;
   border: 1px solid var(--line);
   background: var(--input-bg);
-  padding: 12px 12px 10px 16px;
+  padding: 10px 10px 10px 14px;
   box-shadow: var(--shadow);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
+  min-width: 0;
 }
 
 .outer-actions {
-  margin-left: 10px;
+  margin-left: 4px;
   display: flex;
-  align-items: center;
-  gap: 18px;
-  align-self: stretch;
+  align-items: flex-end;
+  gap: 10px;
+  align-self: end;
+  position: relative;
 }
 
 #messageInput {
+  width: 100%;
   resize: none;
   border: 0;
   outline: none;
-  min-height: 34px;
+  min-width: 0;
+  min-height: 40px;
   max-height: 160px;
   background: transparent;
   color: var(--text);
-  font-size: 22px;
-  line-height: 1.6;
+  font-size: 18px;
+  line-height: 1.5;
   font-family: inherit;
+  overflow-wrap: anywhere;
+  align-self: stretch;
+  padding: 8px 0;
 }
 
 #messageInput::placeholder {
@@ -64,13 +79,15 @@
 
 .composer-actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  align-self: end;
 }
 
 .circle-btn {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -80,20 +97,21 @@
   background: var(--surface-soft);
   color: var(--text);
   cursor: pointer;
-  font-size: 30px;
+  font-size: 26px;
   line-height: 1;
   transition: transform 0.15s ease;
+  flex-shrink: 0;
 }
 
 .outer-actions .circle-btn {
-  width: auto;
-  height: 100%;
-  min-height: 74px;
-  aspect-ratio: 1 / 1;
+  width: 75px;
+  height: 75px;
+  min-height: 75px;
+  aspect-ratio: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 22px;
 }
 
 .circle-btn:hover {
@@ -114,7 +132,7 @@
   background: linear-gradient(135deg, var(--brand-start), #2a6fff);
   color: #fff;
   line-height: 1;
-  font-size: 30px;
+  font-size: 26px;
 }
 
 .btn-glyph {
@@ -136,9 +154,9 @@
 
 .tips {
   text-align: center;
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   color: var(--text-soft);
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .typing-dots {

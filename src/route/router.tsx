@@ -7,8 +7,12 @@ export const router = createBrowserRouter([
     element: <App mode="home" />,
   },
   {
-    path: "/chat",
+    path: "/chat/:conversationId",
     element: <App mode="chat" />,
+  },
+  {
+    path: "/chat",
+    element: <Navigate to="/" replace />,
   },
   {
     path: "*",
