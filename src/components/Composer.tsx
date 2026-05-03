@@ -1,22 +1,30 @@
+/**
+ * 文件功能：底部输入区组件，承载输入、上传、发送、停止、主题切换和清空操作。
+ * 设计思路：
+ * 1. 组件只做视图与事件转发，不直接处理聊天业务，保持可复用与可测试。
+ * 2. 输入发送能力由 canSend 派生计算，保证按钮状态与业务约束一致。
+ * 3. 上传列表作为受控渲染，删除动作通过回调交给上层统一管理资源释放。
+ */
+
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import type { ThemeMode, UploadingImage } from "../types/chat";
 
 interface ComposerProps {
   input: string;
   theme: ThemeMode;
-  isStreaming: boolean;
-  uploadingImages: UploadingImage[];
-  messageInputRef: RefObject<HTMLTextAreaElement | null>;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  onInputChange: (value: string) => void;
-  onSend: () => void;
-  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
-  onUploadClick: () => void;
-  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onRemoveImage: (id: string) => void;
-  onStop: () => void;
-  onThemeChange: (theme: ThemeMode) => void;
-  onClearConversation: () => void;
+  isStreaming: boolean; // AI 是否正在打字
+  uploadingImages: UploadingImage[]; // 待发送图片列表
+  messageInputRef: RefObject<HTMLTextAreaElement | null>; // 输入框 DOM 引用
+  fileInputRef: RefObject<HTMLInputElement | null>; // 文件上传 DOM 引用
+  onInputChange: (value: string) => void; // 输入框文字变化
+  onSend: () => void; // 发送消息
+  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void; // 输入框按键事件
+  onUploadClick: () => void; // 点击上传按钮，触发文件选择
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void; // 文件选择后事件
+  onRemoveImage: (id: string) => void; // 移除待发送图片
+  onStop: () => void; // 停止 AI 打字
+  onThemeChange: (theme: ThemeMode) => void; // 切换主题
+  onClearConversation: () => void; // 清空对话
 }
 
 export function Composer({
@@ -36,11 +44,13 @@ export function Composer({
   onThemeChange,
   onClearConversation,
 }: ComposerProps) {
+  // 文本非空或有待发送图片，且不在流式阶段时允许发送。
   const canSend =
     !isStreaming && (input.trim().length > 0 || uploadingImages.length > 0);
 
   return (
     <footer className="composer-wrap">
+      {/* 上传预览区：展示发送前临时图片，并支持移除 */}
       <section className="upload-preview">
         {uploadingImages.map((item) => (
           <article key={item.id} className="preview-item">
@@ -59,6 +69,7 @@ export function Composer({
 
       <div className="composer-row">
         <div className="composer">
+          {/* 输入框 */}
           <textarea
             ref={messageInputRef}
             id="messageInput"
@@ -70,6 +81,7 @@ export function Composer({
           />
 
           <div className="composer-actions">
+            {/* 文件输入框保持隐藏，通过按钮触发点击 */}
             <input
               ref={fileInputRef}
               type="file"
@@ -107,6 +119,7 @@ export function Composer({
           </div>
         </div>
 
+        {/* 外部操作按钮 */}
         <div className="outer-actions">
           <button
             className="circle-btn"

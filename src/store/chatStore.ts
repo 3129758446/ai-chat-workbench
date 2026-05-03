@@ -1,3 +1,12 @@
+/**
+ * 文件功能：多会话聊天状态中心（Zustand），统一管理 UI 状态、会话状态与持久化。
+ * 设计思路：
+ * 1. 把“可跨组件共享且会频繁变化”的状态集中管理，减少 props drilling。
+ * 2. 将状态与操作方法放在同一个 store，便于形成可追踪的数据流。
+ * 3. UI 展示消息与 API 历史消息分轨存储，既保证展示灵活性又保证请求正确性。
+ * 4. 上传图片 URL 的释放逻辑放入 store，避免资源管理散落在多处。
+ */
+
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { CHAT_STORE_STORAGE, THEME_STORAGE } from "../constants";

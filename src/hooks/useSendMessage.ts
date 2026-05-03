@@ -1,3 +1,12 @@
+/**
+ * 文件功能：封装“发送消息”完整流程，统一处理首页跳转、流式请求、历史维护与错误提示。
+ * 设计思路：
+ * 1. 将发送链路从 App.tsx 抽离为 hook，主组件仅负责页面编排和事件绑定。
+ * 2. 发送采用“先更新 UI，再流式回填”的策略，保证用户操作即时反馈。
+ * 3. 错误信息按场景分级（鉴权/限流/网络/中断），给出可执行的下一步提示。
+ * 4. 通过 useCallback 固定函数引用，避免 effect 依赖因函数地址变化触发重复执行。
+ */
+
 import { useCallback } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { API_KEY_STORAGE } from "../constants";
@@ -18,11 +27,11 @@ import {
 import { buildUserMessageContent } from "../utils/messageContent";
 
 interface UseSendMessageParams {
-  mode: "home" | "chat";
+  mode: "home" | "chat"; // 当前页面模式：首页仅负责收集问题并跳转，聊天页才实际发请求
   conversationId: string | null;
-  input: string;
-  isStreaming: boolean;
-  uploadingImages: UploadingImage[];
+  input: string; // 输入框当前文本
+  isStreaming: boolean; // 当前是否在流式响应中，用于防并发发送
+  uploadingImages: UploadingImage[]; // 待发送图片列表
   navigate: NavigateFunction;
   clearUploadingImages: (conversationId: string) => void;
   setInput: (conversationId: string, value: string) => void;
@@ -61,6 +70,7 @@ export function useSendMessage({
   ensureConversation,
   createConversation,
 }: UseSendMessageParams) {
+  // 当本地缺少 Key 时即时弹窗录入，降低首次使用门槛。
   const promptForApiKey = (): string => {
     const inputValue = window.prompt(
       "未检测到本地 API Key，请输入你的 LINGXI_API_KEY：",
@@ -75,6 +85,7 @@ export function useSendMessage({
 
   return useCallback(
     async (cardPrompt?: string) => {
+      // 1. 首页只负责创建会话并跳转，不直接发请求。
       if (mode === "home") {
         const prompt = (
           typeof cardPrompt === "string" ? cardPrompt : input
@@ -96,10 +107,12 @@ export function useSendMessage({
       const targetConversationId = conversationId || createConversation();
       ensureConversation(targetConversationId);
 
+      // 2. 如果正在流式输出，禁止重复发送。
       if (isStreaming) {
         return;
       }
 
+      // 3. 检查是否有内容，文本和图片都为空时不触发请求。
       const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
       const text = rawText.trim();
       const hasImages = uploadingImages.length > 0;
@@ -107,6 +120,7 @@ export function useSendMessage({
         return;
       }
 
+      // 4. 检查 API Key。
       let apiKey = ensureApiKey();
       if (!apiKey) {
         apiKey = promptForApiKey();
@@ -120,9 +134,11 @@ export function useSendMessage({
         }
       }
 
+      // 复制一份图片数组，避免后续 clear 操作影响当前发送快照。
       const images = [...uploadingImages];
       const userDisplayText = text || `（发送了 ${images.length} 张图片）`;
 
+      // 5. 构建发送内容（处理图片），把文本 + 图片转成接口需要的格式。
       let userContent: string | MessagePart[];
       try {
         userContent = await buildUserMessageContent(text, images);
@@ -135,6 +151,7 @@ export function useSendMessage({
         return;
       }
 
+      // 6. 先把用户消息加到界面，保证立即反馈。
       addUiMessage(targetConversationId, {
         id: uid("user"),
         role: "user",
@@ -151,10 +168,13 @@ export function useSendMessage({
         content: userContent,
       };
 
+      // 7. 把用户消息加入模型历史。
       pushHistory(targetConversationId, currentUserMessage);
+      // 8. 清空输入框和待发送图片。
       setInput(targetConversationId, "");
       clearUploadingImages(targetConversationId);
 
+      // 9. 先插入空的助手消息占位，后续通过 onDelta 实时覆盖文本。
       const assistantId = uid("assistant");
       addUiMessage(targetConversationId, {
         id: assistantId,
@@ -162,11 +182,12 @@ export function useSendMessage({
         text: "",
       });
 
-      const controller = new AbortController();
+      const controller = new AbortController(); // 创建控制器实例，用于可能的请求中断操作
       setAbortController(targetConversationId, controller);
       setStreaming(targetConversationId, true);
 
       try {
+        // 10. 发起流式请求（核心中的核心）。
         const currentHistory =
           useChatStore.getState().conversations[targetConversationId]?.chatHistory || [];
 
@@ -178,15 +199,18 @@ export function useSendMessage({
             updateUiMessageText(targetConversationId, assistantId, delta),
         );
 
+        // 11. 请求完成，把 AI 消息加入历史。
         pushHistory(targetConversationId, {
           role: "assistant",
           content: finalText || "（未返回内容）",
         });
       } catch (error) {
+        // 12. 错误处理：中断/鉴权/限流/网络等类型给出可操作提示。
         let message = "请求失败，请稍后重试。";
         let shouldReplace = true;
 
         if (error instanceof Error && error.name === "AbortError") {
+          // 用户手动停止时回滚本轮 user 历史，避免污染后续上下文。
           removeHistoryMessage(targetConversationId, currentUserMessage);
           const currentText =
             useChatStore
@@ -210,6 +234,7 @@ export function useSendMessage({
             : "";
 
           if (typedError.status === 401 || typedError.status === 403) {
+            // 鉴权失败时清理本地 Key，避免后续请求重复失败。
             localStorage.removeItem(API_KEY_STORAGE);
             message = `鉴权失败：API Key 无效、过期或无权限。已清除本地 Key，请重新写入 LINGXI_API_KEY 后再发送。${endpointTip}`;
           } else if (typedError.status === 429) {
@@ -227,6 +252,7 @@ export function useSendMessage({
           updateUiMessageText(targetConversationId, assistantId, message);
         }
       } finally {
+        // 无论成功失败都恢复按钮状态。
         setAbortController(targetConversationId, null);
         setStreaming(targetConversationId, false);
       }

@@ -1,3 +1,11 @@
+/**
+ * 文件功能：应用主容器，负责串联会话路由、聊天状态、消息发送和页面级交互。
+ * 设计思路：
+ * 1. App 作为“页面编排层”，不直接承载底层请求细节，而是协调 store、hook 和组件。
+ * 2. 多会话场景下，路由参数 `conversationId` 是当前会话的单一事实来源。
+ * 3. 首页和聊天页共用同一套发送链路，但首页只负责创建会话和跳转。
+ */
+
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -26,6 +34,7 @@ function getConversationSummaries(
   conversations: Record<string, Conversation>,
   orderedIds: string[],
 ) {
+  // 侧栏只消费轻量摘要，避免把完整会话对象直接暴露给展示组件。
   return orderedIds
     .map((id) => conversations[id])
     .filter(Boolean)
@@ -86,6 +95,7 @@ function App({ mode = "chat" }: AppProps) {
     : null;
 
   useEffect(() => {
+    // 聊天页刷新或直达时，确保路由上的会话在 store 中存在。
     if (mode !== "chat" || !routeConversationId) {
       return;
     }
@@ -124,6 +134,7 @@ function App({ mode = "chat" }: AppProps) {
   });
 
   const stopStreaming = () => {
+    // 通过当前会话对应的 AbortController 停止流式返回。
     if (!routeConversationId || !abortController) {
       return;
     }
@@ -132,6 +143,7 @@ function App({ mode = "chat" }: AppProps) {
   };
 
   const handleClearConversation = () => {
+    // 首页清空仅重置草稿；聊天页则删除当前会话记录。
     if (!routeConversationId) {
       setHomeInput("");
       return;
@@ -177,6 +189,7 @@ function App({ mode = "chat" }: AppProps) {
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    // 图片上传在聊天页归属当前会话，在首页则先创建会话再挂载草稿图片。
     const files = Array.from(event.target.files || []);
     const nextImages: UploadingImage[] = files
       .filter((file) => file.type.startsWith("image/"))
@@ -210,6 +223,7 @@ function App({ mode = "chat" }: AppProps) {
   };
 
   useEffect(() => {
+    // 处理首页跳转带入的草稿和自动发送标记，且只消费一次。
     if (mode !== "chat" || !routeConversationId || isStreaming) {
       return;
     }

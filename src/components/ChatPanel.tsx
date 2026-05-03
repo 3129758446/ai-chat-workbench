@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+/**
+ * 文件功能：聊天消息展示组件，负责用户/助手消息的渲染分流。
+ * 设计思路：
+ * 1. 将消息展示拆成 ChatPanel、AssistantMessage、UserMessage 三层，降低单组件复杂度。
+ * 2. 助手消息使用 markdown 渲染能力，用户消息保持结构化直出，降低 XSS 风险面。
+ * 3. 打字状态仅作用于最后一条助手消息，避免历史消息被误判为流式中。
+ */
+
+import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import type { UiMessage } from "../types/chat";
+// markdown 渲染和代码块增强工具函数。
 import { enhanceCodeBlocks, renderMarkdownToHtml } from "../utils/markdown";
 
 interface ChatPanelProps {
@@ -7,7 +16,7 @@ interface ChatPanelProps {
   isStreaming: boolean;
 }
 
-function AssistantMessage({
+const AssistantMessage = memo(function AssistantMessage({
   text,
   isStreaming,
 }: {
@@ -15,14 +24,29 @@ function AssistantMessage({
   isStreaming: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Markdown 渲染结果缓存，避免无关更新重复计算。
   const html = useMemo(() => renderMarkdownToHtml(text), [text]);
 
-  useEffect(() => {
-    if (containerRef.current) {
-      enhanceCodeBlocks(containerRef.current);
+  useLayoutEffect(() => {
+    // 每次 HTML 变化后为代码块补高亮和复制按钮，历史消息依靠 memo 避免被父级重渲染覆盖。
+    const container = containerRef.current;
+    if (!container) {
+      return;
     }
+
+    enhanceCodeBlocks(container);
+    const frameId = window.requestAnimationFrame(() => {
+      if (containerRef.current) {
+        enhanceCodeBlocks(containerRef.current);
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, [html]);
 
+  // 仅在流式且当前文本为空时展示打字占位。
   const showTyping = isStreaming && !text.trim();
 
   return (
@@ -44,9 +68,10 @@ function AssistantMessage({
       )}
     </div>
   );
-}
+});
 
-function UserMessage({ message }: { message: UiMessage }) {
+const UserMessage = memo(function UserMessage({ message }: { message: UiMessage }) {
+  // 用户消息仅渲染图片片段，文本使用 message.text 统一展示。
   const imageParts = (message.content || []).filter(
     (part) => part.type === "image_url",
   );
@@ -68,16 +93,18 @@ function UserMessage({ message }: { message: UiMessage }) {
       ) : null}
     </div>
   );
-}
+});
 
 export function ChatPanel({ messages, isStreaming }: ChatPanelProps) {
   return (
     <section className="chat-panel" aria-live="polite">
       {messages.map((message, index) => {
+        // 只有最后一条助手消息在流式阶段需要显示特殊状态。
+        // 判断是否显示「AI 正在打字」
         const assistantStreaming =
-          message.role === "assistant" &&
-          isStreaming &&
-          index === messages.length - 1;
+          message.role === "assistant" &&  // 是 AI 发的
+          isStreaming &&                   // 正在流式输出
+          index === messages.length - 1;   // 是最后一条
 
         return (
           <div
