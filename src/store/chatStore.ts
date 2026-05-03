@@ -20,6 +20,7 @@ export const useChatStore = create<ChatState>()(
   persist(
     (set, get) => ({
       theme: DEFAULT_THEME,
+      modelProvider: "auto",
       currentConversationId: null,
       orderedConversationIds: [],
       conversations: {},

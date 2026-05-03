@@ -9,7 +9,8 @@
 
 import { useCallback } from "react";
 import type { NavigateFunction } from "react-router-dom";
-import { API_KEY_STORAGE } from "../constants";
+import { API_KEY_STORAGE, DEEPSEEK_API_KEY_STORAGE } from "../constants";
+import type { ChatProvider } from "../services/api";
 import { streamChatCompletion } from "../services/api";
 import { useChatStore } from "../store";
 import type {
@@ -18,6 +19,7 @@ import type {
   UiMessage,
   UploadingImage,
   UploadingTextFile,
+  ModelProviderMode,
 } from "../types/chat";
 import {
   ensureApiKey,
@@ -102,6 +104,7 @@ interface UseSendMessageParams {
   mode: "home" | "chat"; // 当前页面模式：首页仅负责收集问题并跳转，聊天页才实际发请求
   conversationId: string | null;
   input: string; // 输入框当前文本
+  modelProvider: ModelProviderMode; // 当前选中的模型模式
   isStreaming: boolean; // 当前是否在流式响应中，用于防并发发送
   uploadingImages: UploadingImage[]; // 待发送图片列表
   uploadingFiles: UploadingTextFile[]; // 待发送文本文件列表
@@ -130,6 +133,7 @@ export function useSendMessage({
   mode,
   conversationId,
   input,
+  modelProvider,
   isStreaming,
   uploadingImages,
   uploadingFiles,
@@ -147,15 +151,19 @@ export function useSendMessage({
   createConversation,
 }: UseSendMessageParams) {
   // 当本地缺少 Key 时即时弹窗录入，降低首次使用门槛。
-  const promptForApiKey = (): string => {
+  const promptForApiKey = (provider: ChatProvider): string => {
+    const storageKey =
+      provider === "deepseek" ? DEEPSEEK_API_KEY_STORAGE : API_KEY_STORAGE;
+    const label =
+      provider === "deepseek" ? "DEEPSEEK_API_KEY" : "LINGXI_API_KEY";
     const inputValue = window.prompt(
-      "未检测到本地 API Key，请输入你的 LINGXI_API_KEY：",
+      `未检测到本地 API Key，请输入你的 ${label}：`,
     );
     const nextKey = normalizeApiKey(inputValue);
     if (!nextKey) {
       return "";
     }
-    localStorage.setItem(API_KEY_STORAGE, nextKey);
+    localStorage.setItem(storageKey, nextKey);
     return nextKey;
   };
 
@@ -192,21 +200,52 @@ export function useSendMessage({
       const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
       const text = rawText.trim();
       const hasImages = uploadingImages.length > 0;
-      const readyFiles = uploadingFiles.filter((file) => file.status === "ready");
+      const readyFiles = uploadingFiles.filter(
+        (file) => file.status === "ready",
+      );
       const hasFiles = readyFiles.length > 0;
       if (!text && !hasImages && !hasFiles) {
         return;
       }
 
-      // 4. 检查 API Key。
-      let apiKey = ensureApiKey();
+      // 4. 确定使用的 provider。
+      const hasDeepSeekKey = Boolean(ensureApiKey(DEEPSEEK_API_KEY_STORAGE));
+      let provider: ChatProvider;
+      if (modelProvider === "lingxi") {
+        provider = "lingxi";
+      } else if (modelProvider === "deepseek") {
+        provider = "deepseek";
+      } else {
+        // 自动模式：如果有图片走灵犀，否则有 DeepSeek Key 优先走 DeepSeek。
+        provider = hasImages
+          ? "lingxi"
+          : hasDeepSeekKey
+            ? "deepseek"
+            : "lingxi";
+      }
+
+      if (provider === "deepseek" && hasImages) {
+        addUiMessage(targetConversationId, {
+          id: uid("assistant"),
+          role: "assistant",
+          text: "DeepSeek 当前未接入图片识别，请切换到“灵犀 / Qwen”或移除图片后再发送。",
+        });
+        return;
+      }
+
+      // 5. 检查当前 provider 对应的 API Key。
+      const providerStorageKey =
+        provider === "deepseek" ? DEEPSEEK_API_KEY_STORAGE : API_KEY_STORAGE;
+      const providerLabel =
+        provider === "deepseek" ? "DEEPSEEK_API_KEY" : "LINGXI_API_KEY";
+      let apiKey = ensureApiKey(providerStorageKey);
       if (!apiKey) {
-        apiKey = promptForApiKey();
+        apiKey = promptForApiKey(provider);
         if (!apiKey) {
           addUiMessage(targetConversationId, {
             id: uid("assistant"),
             role: "assistant",
-            text: "未输入 API Key，本次消息未发送。",
+            text: `未输入 ${providerLabel}，本次消息未发送。`,
           });
           return;
         }
@@ -221,7 +260,7 @@ export function useSendMessage({
           ? `（发送了 ${files.length} 个文件）`
           : `（发送了 ${images.length} 张图片）`);
 
-      // 5. 构建发送内容（处理图片），把文本 + 图片转成接口需要的格式。
+      // 6. 构建发送内容（处理图片），把文本 + 图片转成接口需要的格式。
       let userContent: string | MessagePart[];
       try {
         userContent = await buildUserMessageContent(text, images, files);
@@ -234,7 +273,7 @@ export function useSendMessage({
         return;
       }
 
-      // 6. 先把用户消息加到界面，保证立即反馈。
+      // 7. 先把用户消息加到界面，保证立即反馈。
       addUiMessage(targetConversationId, {
         id: uid("user"),
         role: "user",
@@ -251,14 +290,14 @@ export function useSendMessage({
         content: userContent,
       };
 
-      // 7. 把用户消息加入模型历史。
+      // 8. 把用户消息加入模型历史。
       pushHistory(targetConversationId, currentUserMessage);
-      // 8. 清空输入框和待发送图片。
+      // 9. 清空输入框和待发送图片。
       setInput(targetConversationId, "");
       clearUploadingImages(targetConversationId);
       clearUploadingFiles(targetConversationId);
 
-      // 9. 先插入空的助手消息占位，后续通过 onDelta 实时覆盖文本。
+      // 10. 先插入空的助手消息占位，后续通过 onDelta 实时覆盖文本。
       const assistantId = uid("assistant");
       addUiMessage(targetConversationId, {
         id: assistantId,
@@ -274,11 +313,13 @@ export function useSendMessage({
       });
 
       try {
-        // 10. 发起流式请求（核心中的核心）。
+        // 11. 发起流式请求（核心中的核心）。
         const currentHistory =
-          useChatStore.getState().conversations[targetConversationId]?.chatHistory || [];
+          useChatStore.getState().conversations[targetConversationId]
+            ?.chatHistory || [];
 
         const finalText = await streamChatCompletion(
+          provider,
           apiKey,
           currentHistory,
           controller.signal,
@@ -286,13 +327,13 @@ export function useSendMessage({
         );
         await typewriter.flush(finalText);
 
-        // 11. 请求完成，把 AI 消息加入历史。
+        // 12. 请求完成，把 AI 消息加入历史。
         pushHistory(targetConversationId, {
           role: "assistant",
           content: finalText || "（未返回内容）",
         });
       } catch (error) {
-        // 12. 错误处理：中断/鉴权/限流/网络等类型给出可操作提示。
+        // 13. 错误处理：中断/鉴权/限流/网络等类型给出可操作提示。
         typewriter.cancel();
         let message = "请求失败，请稍后重试。";
         let shouldReplace = true;
@@ -303,8 +344,9 @@ export function useSendMessage({
           const currentText =
             useChatStore
               .getState()
-              .conversations[targetConversationId]
-              ?.messages.find((item) => item.id === assistantId)?.text || "";
+              .conversations[
+                targetConversationId
+              ]?.messages.find((item) => item.id === assistantId)?.text || "";
 
           if (currentText.trim()) {
             shouldReplace = false;
@@ -320,17 +362,24 @@ export function useSendMessage({
           const endpointTip = typedError.endpoint
             ? `（端点：${escapeHtml(typedError.endpoint)}）`
             : "";
+          const providerName = provider === "deepseek" ? "DeepSeek" : "灵犀";
 
           if (typedError.status === 401 || typedError.status === 403) {
             // 鉴权失败时清理本地 Key，避免后续请求重复失败。
-            localStorage.removeItem(API_KEY_STORAGE);
-            message = `鉴权失败：API Key 无效、过期或无权限。已清除本地 Key，请重新写入 LINGXI_API_KEY 后再发送。${endpointTip}`;
+            localStorage.removeItem(providerStorageKey);
+            message = `鉴权失败：${providerName} API Key 无效、过期或无权限。已清除本地 Key，请重新写入 ${providerLabel} 后再发送。${endpointTip}`;
           } else if (typedError.status === 429) {
-            message = `请求频率或额度受限（429）。请稍后重试，或检查百炼账户额度。${endpointTip}`;
+            message =
+              provider === "deepseek"
+                ? `请求频率或额度受限（429）。请稍后重试，或检查 DeepSeek 账户额度。${endpointTip}`
+                : `请求频率或额度受限（429）。请稍后重试，或检查百炼账户额度。${endpointTip}`;
           } else if (typedError.status === 400 && hasImages) {
             message = `图片识别请求被拒绝（400）。请确认当前账号开通了视觉模型，并检查模型名是否可用。${endpointTip}`;
           } else if (typedError.message?.includes("Failed to fetch")) {
-            message = `网络请求失败。若控制台出现 ERR_PROXY_CONNECTION_FAILED，可关闭代理或将 dashscope.aliyuncs.com、dashscope-intl.aliyuncs.com 设为直连后重试。${endpointTip}`;
+            message =
+              provider === "deepseek"
+                ? `网络请求失败。请检查 DeepSeek 代理或网络连接后重试。${endpointTip}`
+                : `网络请求失败。若控制台出现 ERR_PROXY_CONNECTION_FAILED，可关闭代理或将 dashscope.aliyuncs.com、dashscope-intl.aliyuncs.com 设为直连后重试。${endpointTip}`;
           } else if (typedError.message) {
             message = `请求失败：${typedError.message}${endpointTip}`;
           }
@@ -349,6 +398,7 @@ export function useSendMessage({
       mode,
       conversationId,
       input,
+      modelProvider,
       isStreaming,
       uploadingImages,
       uploadingFiles,

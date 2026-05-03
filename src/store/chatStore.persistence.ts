@@ -19,6 +19,7 @@ import type { ChatState, PersistedChatState } from "./chatStore.types";
 function partializeChatState(state: ChatState): PersistedChatState {
   return {
     theme: state.theme,
+    modelProvider: state.modelProvider,
     currentConversationId: state.currentConversationId,
     orderedConversationIds: state.orderedConversationIds,
     // 会话裁剪为草稿结构，避免把 File、AbortController 等不可序列化对象塞进 localStorage。

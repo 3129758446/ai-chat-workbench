@@ -14,8 +14,11 @@ export const DEFAULT_API_ENDPOINTS = [
 
 export const MODEL_NAME = "qwen-turbo";
 export const VISION_MODEL_NAME = "qwen-vl-plus";
+export const DEEPSEEK_MODEL_NAME = "deepseek-chat";
+export const DEEPSEEK_API_ENDPOINT = "/deepseek/chat/completions";
 
 export const API_KEY_STORAGE = "LINGXI_API_KEY";
+export const DEEPSEEK_API_KEY_STORAGE = "DEEPSEEK_API_KEY";
 export const API_BASE_URL_STORAGE = "LINGXI_API_BASE_URL";
 export const THEME_STORAGE = "LINGXI_THEME";
 export const CHAT_STORE_STORAGE = "LINGXI_CHAT_STORE";

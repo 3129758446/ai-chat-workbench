@@ -11,12 +11,20 @@ import type { ChatState, ChatStoreSet } from "./chatStore.types";
 
 export function createRuntimeActions(
   set: ChatStoreSet,
-): Pick<ChatState, "setTheme" | "setStreaming" | "setAbortController"> {
+): Pick<
+  ChatState,
+  "setTheme" | "setModelProvider" | "setStreaming" | "setAbortController"
+> {
   return {
     setTheme: (theme) => {
       // 主题属于用户偏好，切换时同步写入 localStorage，刷新后可恢复。
       localStorage.setItem(THEME_STORAGE, theme);
       set({ theme });
+    },
+
+    setModelProvider: (provider) => {
+      // 模型选择属于用户偏好，和主题一样进入持久化状态，刷新后继续沿用。
+      set({ modelProvider: provider });
     },
 
     setStreaming: (id, value) =>

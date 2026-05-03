@@ -11,6 +11,9 @@ export type Role = "user" | "assistant";
 
 export type ThemeMode = "dark" | "light";
 
+// 模型选择模式：支持自动选择、固定走灵犀/Qwen、固定走 DeepSeek。
+export type ModelProviderMode = "auto" | "lingxi" | "deepseek";
+
 export interface ImagePart {
   type: "image_url";
   image_url: { url: string };

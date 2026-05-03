@@ -18,6 +18,12 @@ export default defineConfig({
         secure: true,
         rewrite: (path) => path.replace(/^\/api-intl/, "/compatible-mode/v1"),
       },
+      "/deepseek": { // DeepSeek 文本聊天代理，避免前端直接跨域请求官方接口。
+        target: "https://api.deepseek.com",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/deepseek/, ""),
+      },
     },
   },
 });

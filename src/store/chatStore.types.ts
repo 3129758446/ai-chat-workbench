@@ -11,6 +11,7 @@ import type {
   ApiMessage,
   Conversation,
   ConversationDraft,
+  ModelProviderMode,
   ThemeMode,
   UiMessage,
   UploadingImage,
@@ -19,6 +20,7 @@ import type {
 
 export interface PersistedChatState {
   theme: ThemeMode;
+  modelProvider: ModelProviderMode;
   currentConversationId: string | null;
   orderedConversationIds: string[];
   // 持久化层只保存可序列化的会话草稿，不保存 File、AbortController 等运行态对象。
@@ -27,12 +29,14 @@ export interface PersistedChatState {
 
 export interface ChatState {
   theme: ThemeMode;
+  modelProvider: ModelProviderMode;
   currentConversationId: string | null;
   orderedConversationIds: string[];
   conversations: Record<string, Conversation>;
   abortControllers: Record<string, AbortController | null>;
 
   setTheme: (theme: ThemeMode) => void;
+  setModelProvider: (provider: ModelProviderMode) => void;
 
   createConversation: (options?: { title?: string }) => string;
   ensureConversation: (id: string) => void;

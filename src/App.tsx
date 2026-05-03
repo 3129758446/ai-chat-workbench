@@ -16,7 +16,11 @@ import { WelcomeSection } from "./components/WelcomeSection";
 import { useAppEffects } from "./hooks/useAppEffects";
 import { useSendMessage } from "./hooks/useSendMessage";
 import { useChatStore } from "./store";
-import type { Conversation, UploadingImage, UploadingTextFile } from "./types/chat";
+import type {
+  Conversation,
+  UploadingImage,
+  UploadingTextFile,
+} from "./types/chat";
 import {
   createUploadingTextFile,
   isImageFile,
@@ -67,11 +71,13 @@ function App({ mode = "chat" }: AppProps) {
 
   const {
     theme,
+    modelProvider,
     currentConversationId,
     orderedConversationIds,
     conversations,
     abortControllers,
     setTheme,
+    setModelProvider,
     createConversation,
     ensureConversation,
     switchConversation,
@@ -96,11 +102,14 @@ function App({ mode = "chat" }: AppProps) {
   const activeConversation =
     mode === "chat"
       ? (routeConversationId && conversations[routeConversationId]) ||
-        (currentConversationId ? conversations[currentConversationId] : undefined)
+        (currentConversationId
+          ? conversations[currentConversationId]
+          : undefined)
       : undefined;
   const showConversationLayout = true;
 
-  const input = mode === "chat" ? activeConversation?.draftInput || "" : homeInput;
+  const input =
+    mode === "chat" ? activeConversation?.draftInput || "" : homeInput;
   const messages = activeConversation?.messages || [];
   const uploadingImages = activeConversation?.uploadingImages || [];
   const uploadingFiles = activeConversation?.uploadingFiles || [];
@@ -134,6 +143,7 @@ function App({ mode = "chat" }: AppProps) {
     mode,
     conversationId: routeConversationId,
     input,
+    modelProvider,
     isStreaming,
     uploadingImages,
     uploadingFiles,
@@ -227,9 +237,12 @@ function App({ mode = "chat" }: AppProps) {
     }
 
     const targetConversationId =
-      mode === "chat" && routeConversationId ? routeConversationId : createConversation();
+      mode === "chat" && routeConversationId
+        ? routeConversationId
+        : createConversation();
     const existingFiles =
-      useChatStore.getState().conversations[targetConversationId]?.uploadingFiles || [];
+      useChatStore.getState().conversations[targetConversationId]
+        ?.uploadingFiles || [];
     const activeFileCount = existingFiles.filter(
       (item) => item.status !== "error",
     ).length;
@@ -272,7 +285,10 @@ function App({ mode = "chat" }: AppProps) {
           .catch((error) => {
             updateUploadingFile(targetConversationId, file.id, {
               status: "error",
-              error: error instanceof Error ? error.message : "文件读取失败，请重试。",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "文件读取失败，请重试。",
             });
           });
       });
@@ -378,6 +394,7 @@ function App({ mode = "chat" }: AppProps) {
       <Composer
         input={input}
         theme={theme}
+        modelProvider={modelProvider}
         isStreaming={isStreaming}
         uploadingImages={uploadingImages}
         uploadingFiles={uploadingFiles}
@@ -400,6 +417,7 @@ function App({ mode = "chat" }: AppProps) {
         }}
         onStop={stopStreaming}
         onThemeChange={setTheme}
+        onModelProviderChange={setModelProvider}
         onClearConversation={handleClearConversation}
       />
     </>

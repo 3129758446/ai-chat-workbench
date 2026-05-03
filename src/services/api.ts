@@ -3,17 +3,21 @@
  * 设计思路：
  * 1. 服务层只关心“请求与响应”，不直接依赖 UI，便于复用和测试。
  * 2. 将端点回退与传输层错误判定放在统一入口，避免调用方重复处理。
- * 3. 消息中含图片时自动切换视觉模型，实现对多模态输入的透明支持。
+ * 3. 通过 provider 区分灵犀/Qwen 与 DeepSeek，保持发送链路不感知底层厂商差异。
  * 4. SSE 解析采用增量拼接并回调 onDelta，满足聊天打字机式更新需求。
  */
 
 import {
   API_BASE_URL_STORAGE,
+  DEEPSEEK_API_ENDPOINT,
+  DEEPSEEK_MODEL_NAME,
   DEFAULT_API_ENDPOINTS,
   MODEL_NAME,
   VISION_MODEL_NAME,
 } from "../constants";
 import type { ApiMessage } from "../types/chat";
+
+export type ChatProvider = "lingxi" | "deepseek";
 
 export interface ApiError extends Error {
   status?: number;
@@ -30,14 +34,23 @@ function hasImageInMessages(messages: ApiMessage[]): boolean {
   );
 }
 
-// 根据消息内容动态切换文本模型/视觉模型。
-function resolveModelByMessages(messages: ApiMessage[]): string {
+// 根据 provider 和消息内容动态切换模型。
+function resolveModelByMessages(
+  provider: ChatProvider,
+  messages: ApiMessage[],
+): string {
+  if (provider === "deepseek") {
+    return DEEPSEEK_MODEL_NAME;
+  }
+
   return hasImageInMessages(messages) ? VISION_MODEL_NAME : MODEL_NAME;
 }
 
-// 组装端点列表：自定义端点优先，默认端点作为回退。
-function getApiEndpoints(): string[] {
-  const custom = String(localStorage.getItem(API_BASE_URL_STORAGE) || "").trim();
+// 组装灵犀端点列表：自定义端点优先，默认端点作为回退。
+function getLingxiApiEndpoints(): string[] {
+  const custom = String(
+    localStorage.getItem(API_BASE_URL_STORAGE) || "",
+  ).trim();
   if (!custom) {
     return [...DEFAULT_API_ENDPOINTS];
   }
@@ -65,6 +78,14 @@ function getApiEndpoints(): string[] {
   );
 }
 
+function getApiEndpoints(provider: ChatProvider): string[] {
+  if (provider === "deepseek") {
+    return [DEEPSEEK_API_ENDPOINT];
+  }
+
+  return getLingxiApiEndpoints();
+}
+
 // 判断错误是否属于可重试的传输层异常。
 function isTransportError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -82,6 +103,7 @@ function isTransportError(error: unknown): boolean {
 
 async function streamByEndpoint(
   endpoint: string, // 请求的端点。
+  provider: ChatProvider,
   apiKey: string,
   messages: ApiMessage[],
   signal: AbortSignal, // 请求取消信号。
@@ -95,7 +117,7 @@ async function streamByEndpoint(
       Authorization: `Bearer ${apiKey}`, // 添加 API 密钥到请求头。
     },
     body: JSON.stringify({
-      model: resolveModelByMessages(messages), // 根据消息内容动态选择模型。
+      model: resolveModelByMessages(provider, messages), // 根据 provider 和消息内容动态选择模型。
       stream: true, // 启用流式响应，允许服务器逐块发送数据。
       temperature: 0.7, // 可调整的生成随机性参数。
       messages: [
@@ -185,19 +207,27 @@ async function streamByEndpoint(
 
 // 多端点容错入口：仅在传输层错误时尝试下一个端点。
 export async function streamChatCompletion(
+  provider: ChatProvider,
   apiKey: string,
   messages: ApiMessage[],
   signal: AbortSignal,
   onDelta: (text: string) => void,
 ): Promise<string> {
-  const endpoints = getApiEndpoints();
+  const endpoints = getApiEndpoints(provider);
   let lastError: ApiError | null = null;
 
   // 循环尝试每个端点，一个接口挂了自动试下一个。
   for (let index = 0; index < endpoints.length; index += 1) {
     const endpoint = endpoints[index];
     try {
-      return await streamByEndpoint(endpoint, apiKey, messages, signal, onDelta);
+      return await streamByEndpoint(
+        endpoint,
+        provider,
+        apiKey,
+        messages,
+        signal,
+        onDelta,
+      );
     } catch (error) {
       const typedError = error as ApiError;
       typedError.endpoint = typedError.endpoint || endpoint; // 确保错误对象包含触发错误的端点信息。

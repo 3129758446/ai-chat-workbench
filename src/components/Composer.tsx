@@ -7,12 +7,18 @@
  */
 
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
-import type { ThemeMode, UploadingImage, UploadingTextFile } from "../types/chat";
+import type {
+  ModelProviderMode,
+  ThemeMode,
+  UploadingImage,
+  UploadingTextFile,
+} from "../types/chat";
 import { formatFileSize } from "../utils/fileUpload";
 
 interface ComposerProps {
   input: string;
   theme: ThemeMode;
+  modelProvider: ModelProviderMode;
   isStreaming: boolean; // AI 是否正在打字
   uploadingImages: UploadingImage[]; // 待发送图片列表
   uploadingFiles: UploadingTextFile[]; // 待发送文本文件列表
@@ -27,12 +33,14 @@ interface ComposerProps {
   onRemoveFile: (id: string) => void; // 移除待发送文本文件
   onStop: () => void; // 停止 AI 打字
   onThemeChange: (theme: ThemeMode) => void; // 切换主题
+  onModelProviderChange: (provider: ModelProviderMode) => void; // 切换模型提供方
   onClearConversation: () => void; // 清空对话
 }
 
 export function Composer({
   input,
   theme,
+  modelProvider,
   isStreaming,
   uploadingImages,
   uploadingFiles,
@@ -47,6 +55,7 @@ export function Composer({
   onRemoveFile,
   onStop,
   onThemeChange,
+  onModelProviderChange,
   onClearConversation,
 }: ComposerProps) {
   // 文本非空或有待发送图片，且不在流式阶段时允许发送。
@@ -120,6 +129,21 @@ export function Composer({
           />
 
           <div className="composer-actions">
+            <div className="model-select-wrap" title="选择使用的模型">
+              <select
+                className="model-select"
+                value={modelProvider}
+                onChange={(event) =>
+                  onModelProviderChange(event.target.value as ModelProviderMode)
+                }
+                aria-label="选择使用的模型"
+                disabled={isStreaming}
+              >
+                <option value="auto">自动</option>
+                <option value="lingxi">灵犀 / Qwen</option>
+                <option value="deepseek">DeepSeek</option>
+              </select>
+            </div>
             {/* 文件输入框保持隐藏，通过按钮触发点击 */}
             <input
               ref={fileInputRef}

@@ -15,9 +15,9 @@ export function normalizeApiKey(raw: string | null): string {
     .replace(/^Bearer\s+/i, "");
 }
 
-// 从 localStorage 读取并返回可直接用于请求头的 Key。
-export function ensureApiKey(): string {
-  return normalizeApiKey(localStorage.getItem(API_KEY_STORAGE));
+// 从 localStorage 读取并返回可直接用于请求头的 Key；默认兼容现有灵犀 Key。
+export function ensureApiKey(storageKey = API_KEY_STORAGE): string {
+  return normalizeApiKey(localStorage.getItem(storageKey));
 }
 
 // 在需要拼接到 HTML 的错误信息等文本场景中防止注入。
