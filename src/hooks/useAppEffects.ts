@@ -14,7 +14,7 @@ import type {
   UploadingImage,
   UploadingTextFile,
 } from "../types/chat";
-import { useChatStore } from "../store/chatStore";
+import { useChatStore } from "../store";
 import { scrollToBottom } from "../utils/helpers";
 
 interface UseAppEffectsParams {

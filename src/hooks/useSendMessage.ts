@@ -11,7 +11,7 @@ import { useCallback } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { API_KEY_STORAGE } from "../constants";
 import { streamChatCompletion } from "../services/api";
-import { useChatStore } from "../store/chatStore";
+import { useChatStore } from "../store";
 import type {
   ApiMessage,
   MessagePart,

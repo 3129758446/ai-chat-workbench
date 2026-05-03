@@ -15,7 +15,7 @@ import { ConversationSidebar } from "./components/ConversationSidebar";
 import { WelcomeSection } from "./components/WelcomeSection";
 import { useAppEffects } from "./hooks/useAppEffects";
 import { useSendMessage } from "./hooks/useSendMessage";
-import { useChatStore } from "./store/chatStore";
+import { useChatStore } from "./store";
 import type { Conversation, UploadingImage, UploadingTextFile } from "./types/chat";
 import {
   createUploadingTextFile,
