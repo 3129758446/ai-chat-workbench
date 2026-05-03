@@ -6,7 +6,13 @@
  * 3. 打字状态仅作用于最后一条助手消息，避免历史消息被误判为流式中。
  */
 
-import { memo, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  memo,
+  useDeferredValue,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import type { UiMessage } from "../types/chat";
 // markdown 渲染和代码块增强工具函数。
 import { enhanceCodeBlocks, renderMarkdownToHtml } from "../utils/markdown";
@@ -24,8 +30,15 @@ const AssistantMessage = memo(function AssistantMessage({
   isStreaming: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const deferredStreamingText = useDeferredValue(text);
   // Markdown 渲染结果缓存，避免无关更新重复计算。
   const html = useMemo(() => renderMarkdownToHtml(text), [text]);
+  const streamingHtml = useMemo(() => {
+    if (!isStreaming || !deferredStreamingText.trim()) {
+      return "";
+    }
+    return renderMarkdownToHtml(deferredStreamingText);
+  }, [deferredStreamingText, isStreaming]);
 
   useLayoutEffect(() => {
     // 流式期间只让文本自然追加，避免高亮重写 DOM 导致打字机抖动。
@@ -70,7 +83,14 @@ const AssistantMessage = memo(function AssistantMessage({
           </span>
         </div>
       ) : isStreaming ? (
-        <div className="markdown-body streaming-text">{text}</div>
+        streamingHtml ? (
+          <div
+            className="markdown-body streaming-markdown"
+            dangerouslySetInnerHTML={{ __html: streamingHtml }}
+          />
+        ) : (
+          <div className="markdown-body streaming-text">{text}</div>
+        )
       ) : (
         <div
           ref={containerRef}
@@ -82,7 +102,11 @@ const AssistantMessage = memo(function AssistantMessage({
   );
 });
 
-const UserMessage = memo(function UserMessage({ message }: { message: UiMessage }) {
+const UserMessage = memo(function UserMessage({
+  message,
+}: {
+  message: UiMessage;
+}) {
   // 用户消息仅渲染图片片段，文本使用 message.text 统一展示。
   const imageParts = (message.content || []).filter(
     (part) => part.type === "image_url",
@@ -114,9 +138,9 @@ export function ChatPanel({ messages, isStreaming }: ChatPanelProps) {
         // 只有最后一条助手消息在流式阶段需要显示特殊状态。
         // 判断是否显示「AI 正在打字」
         const assistantStreaming =
-          message.role === "assistant" &&  // 是 AI 发的
-          isStreaming &&                   // 正在流式输出
-          index === messages.length - 1;   // 是最后一条
+          message.role === "assistant" && // 是 AI 发的
+          isStreaming && // 正在流式输出
+          index === messages.length - 1; // 是最后一条
 
         return (
           <div
