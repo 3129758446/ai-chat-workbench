@@ -6,7 +6,8 @@
  * 3. 通过兜底文本确保 message content 非空，避免仅上传图片且无文本时出现空内容请求。
  */
 
-import type { MessagePart, UploadingImage } from "../types/chat";
+import type { MessagePart, UploadingImage, UploadingTextFile } from "../types/chat";
+import { buildFileQuestionText } from "./fileUpload";
 
 function fileToDataUrl(file: File): Promise<string> {
   // 将上传文件转为 data URL，便于直接以内联方式提交到多模态接口。
@@ -22,17 +23,20 @@ function fileToDataUrl(file: File): Promise<string> {
 export async function buildUserMessageContent(
   text: string,
   images: UploadingImage[],
+  files: UploadingTextFile[] = [],
 ): Promise<string | MessagePart[]> {
+  const textWithFiles = buildFileQuestionText(text, files);
+
   // 无图片时直接返回文本，保持请求结构最简单。
   if (!images.length) {
-    return text;
+    return textWithFiles;
   }
 
   // 有图片时切换为多段内容，兼容 text + image_url 的组合输入格式。
   const parts: MessagePart[] = [];
-  if (text) {
+  if (textWithFiles) {
     // 用户输入文本始终放在图片前，便于模型先理解任务再看视觉输入。
-    parts.push({ type: "text", text });
+    parts.push({ type: "text", text: textWithFiles });
   }
 
   for (const item of images) {

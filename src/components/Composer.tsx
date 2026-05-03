@@ -7,13 +7,15 @@
  */
 
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
-import type { ThemeMode, UploadingImage } from "../types/chat";
+import type { ThemeMode, UploadingImage, UploadingTextFile } from "../types/chat";
+import { formatFileSize } from "../utils/fileUpload";
 
 interface ComposerProps {
   input: string;
   theme: ThemeMode;
   isStreaming: boolean; // AI 是否正在打字
   uploadingImages: UploadingImage[]; // 待发送图片列表
+  uploadingFiles: UploadingTextFile[]; // 待发送文本文件列表
   messageInputRef: RefObject<HTMLTextAreaElement | null>; // 输入框 DOM 引用
   fileInputRef: RefObject<HTMLInputElement | null>; // 文件上传 DOM 引用
   onInputChange: (value: string) => void; // 输入框文字变化
@@ -22,6 +24,7 @@ interface ComposerProps {
   onUploadClick: () => void; // 点击上传按钮，触发文件选择
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void; // 文件选择后事件
   onRemoveImage: (id: string) => void; // 移除待发送图片
+  onRemoveFile: (id: string) => void; // 移除待发送文本文件
   onStop: () => void; // 停止 AI 打字
   onThemeChange: (theme: ThemeMode) => void; // 切换主题
   onClearConversation: () => void; // 清空对话
@@ -32,6 +35,7 @@ export function Composer({
   theme,
   isStreaming,
   uploadingImages,
+  uploadingFiles,
   messageInputRef,
   fileInputRef,
   onInputChange,
@@ -40,13 +44,16 @@ export function Composer({
   onUploadClick,
   onFileChange,
   onRemoveImage,
+  onRemoveFile,
   onStop,
   onThemeChange,
   onClearConversation,
 }: ComposerProps) {
   // 文本非空或有待发送图片，且不在流式阶段时允许发送。
+  const hasReadyFile = uploadingFiles.some((file) => file.status === "ready");
   const canSend =
-    !isStreaming && (input.trim().length > 0 || uploadingImages.length > 0);
+    !isStreaming &&
+    (input.trim().length > 0 || uploadingImages.length > 0 || hasReadyFile);
 
   return (
     <footer className="composer-wrap">
@@ -60,6 +67,38 @@ export function Composer({
               type="button"
               title="移除"
               onClick={() => onRemoveImage(item.id)}
+            >
+              ×
+            </button>
+          </article>
+        ))}
+        {uploadingFiles.map((item) => (
+          <article
+            key={item.id}
+            className={`preview-file ${item.status} ${item.truncated ? "truncated" : ""}`}
+          >
+            <div className="preview-file-main">
+              <span className="preview-file-icon">TXT</span>
+              <div className="preview-file-copy">
+                <strong title={item.name}>{item.name}</strong>
+                <span>
+                  {formatFileSize(item.size)} ·{" "}
+                  {item.status === "parsing"
+                    ? "解析中"
+                    : item.status === "ready"
+                      ? item.truncated
+                        ? "已就绪，发送时会截断"
+                        : "已就绪"
+                      : "解析失败"}
+                </span>
+                {item.error ? <em>{item.error}</em> : null}
+              </div>
+            </div>
+            <button
+              className="remove-preview"
+              type="button"
+              title="移除"
+              onClick={() => onRemoveFile(item.id)}
             >
               ×
             </button>
@@ -85,7 +124,7 @@ export function Composer({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.txt,.md,.markdown,.json,.csv,.log,.js,.ts,.tsx,.jsx,.css,.html,.xml,.yaml,.yml,text/*,application/json"
               multiple
               hidden
               onChange={onFileChange}
@@ -93,7 +132,7 @@ export function Composer({
             <button
               className="circle-btn"
               type="button"
-              title="上传图片"
+              title="上传图片或文本文件"
               onClick={onUploadClick}
             >
               +

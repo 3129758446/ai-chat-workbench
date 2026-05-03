@@ -17,6 +17,7 @@ import type {
   MessagePart,
   UiMessage,
   UploadingImage,
+  UploadingTextFile,
 } from "../types/chat";
 import {
   ensureApiKey,
@@ -32,8 +33,10 @@ interface UseSendMessageParams {
   input: string; // 输入框当前文本
   isStreaming: boolean; // 当前是否在流式响应中，用于防并发发送
   uploadingImages: UploadingImage[]; // 待发送图片列表
+  uploadingFiles: UploadingTextFile[]; // 待发送文本文件列表
   navigate: NavigateFunction;
   clearUploadingImages: (conversationId: string) => void;
+  clearUploadingFiles: (conversationId: string) => void;
   setInput: (conversationId: string, value: string) => void;
   addUiMessage: (conversationId: string, message: UiMessage) => void;
   updateUiMessageText: (
@@ -58,8 +61,10 @@ export function useSendMessage({
   input,
   isStreaming,
   uploadingImages,
+  uploadingFiles,
   navigate,
   clearUploadingImages,
+  clearUploadingFiles,
   setInput,
   addUiMessage,
   updateUiMessageText,
@@ -116,7 +121,9 @@ export function useSendMessage({
       const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
       const text = rawText.trim();
       const hasImages = uploadingImages.length > 0;
-      if (!text && !hasImages) {
+      const readyFiles = uploadingFiles.filter((file) => file.status === "ready");
+      const hasFiles = readyFiles.length > 0;
+      if (!text && !hasImages && !hasFiles) {
         return;
       }
 
@@ -136,12 +143,17 @@ export function useSendMessage({
 
       // 复制一份图片数组，避免后续 clear 操作影响当前发送快照。
       const images = [...uploadingImages];
-      const userDisplayText = text || `（发送了 ${images.length} 张图片）`;
+      const files = [...readyFiles];
+      const userDisplayText =
+        text ||
+        (files.length
+          ? `（发送了 ${files.length} 个文件）`
+          : `（发送了 ${images.length} 张图片）`);
 
       // 5. 构建发送内容（处理图片），把文本 + 图片转成接口需要的格式。
       let userContent: string | MessagePart[];
       try {
-        userContent = await buildUserMessageContent(text, images);
+        userContent = await buildUserMessageContent(text, images, files);
       } catch (error) {
         addUiMessage(targetConversationId, {
           id: uid("assistant"),
@@ -173,6 +185,7 @@ export function useSendMessage({
       // 8. 清空输入框和待发送图片。
       setInput(targetConversationId, "");
       clearUploadingImages(targetConversationId);
+      clearUploadingFiles(targetConversationId);
 
       // 9. 先插入空的助手消息占位，后续通过 onDelta 实时覆盖文本。
       const assistantId = uid("assistant");
@@ -263,8 +276,10 @@ export function useSendMessage({
       input,
       isStreaming,
       uploadingImages,
+      uploadingFiles,
       navigate,
       clearUploadingImages,
+      clearUploadingFiles,
       setInput,
       addUiMessage,
       updateUiMessageText,

@@ -17,6 +17,7 @@ import type {
   ThemeMode,
   UiMessage,
   UploadingImage,
+  UploadingTextFile,
 } from "../types/chat";
 import { uid } from "../utils/helpers";
 
@@ -52,6 +53,14 @@ interface ChatState {
   addUploadingImages: (id: string, images: UploadingImage[]) => void;
   removeUploadingImage: (id: string, imageId: string) => void;
   clearUploadingImages: (id: string) => void;
+  addUploadingFiles: (id: string, files: UploadingTextFile[]) => void;
+  updateUploadingFile: (
+    id: string,
+    fileId: string,
+    patch: Partial<UploadingTextFile>,
+  ) => void;
+  removeUploadingFile: (id: string, fileId: string) => void;
+  clearUploadingFiles: (id: string) => void;
 
   setStreaming: (id: string, value: boolean) => void;
   setAbortController: (id: string, controller: AbortController | null) => void;
@@ -105,6 +114,7 @@ function createConversationRecord(
     messages: [],
     chatHistory: [],
     uploadingImages: [],
+    uploadingFiles: [],
     isStreaming: false,
   };
 }
@@ -145,6 +155,7 @@ function normalizePersistedConversation(
     ...base,
     ...draft,
     uploadingImages: [],
+    uploadingFiles: [],
     isStreaming: false,
   };
 }
@@ -458,6 +469,78 @@ export const useChatStore = create<ChatState>()(
               [id]: {
                 ...conversation,
                 uploadingImages: [],
+              },
+            },
+          };
+        }),
+
+      addUploadingFiles: (id, files) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                uploadingFiles: [...conversation.uploadingFiles, ...files],
+              },
+            },
+          };
+        }),
+
+      updateUploadingFile: (id, fileId, patch) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                uploadingFiles: conversation.uploadingFiles.map((file) =>
+                  file.id === fileId ? { ...file, ...patch } : file,
+                ),
+              },
+            },
+          };
+        }),
+
+      removeUploadingFile: (id, fileId) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                uploadingFiles: conversation.uploadingFiles.filter(
+                  (file) => file.id !== fileId,
+                ),
+              },
+            },
+          };
+        }),
+
+      clearUploadingFiles: (id) =>
+        set((state) => {
+          const conversation = state.conversations[id];
+          if (!conversation) {
+            return state;
+          }
+          return {
+            conversations: {
+              ...state.conversations,
+              [id]: {
+                ...conversation,
+                uploadingFiles: [],
               },
             },
           };

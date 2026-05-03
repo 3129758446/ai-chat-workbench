@@ -16,7 +16,14 @@ import { WelcomeSection } from "./components/WelcomeSection";
 import { useAppEffects } from "./hooks/useAppEffects";
 import { useSendMessage } from "./hooks/useSendMessage";
 import { useChatStore } from "./store/chatStore";
-import type { Conversation, UploadingImage } from "./types/chat";
+import type { Conversation, UploadingImage, UploadingTextFile } from "./types/chat";
+import {
+  createUploadingTextFile,
+  isImageFile,
+  MAX_TEXT_FILE_COUNT,
+  parseTextFile,
+  validateTextFile,
+} from "./utils/fileUpload";
 import { uid } from "./utils/helpers";
 
 type AppMode = "home" | "chat";
@@ -78,6 +85,10 @@ function App({ mode = "chat" }: AppProps) {
     addUploadingImages,
     removeUploadingImage,
     clearUploadingImages,
+    addUploadingFiles,
+    updateUploadingFile,
+    removeUploadingFile,
+    clearUploadingFiles,
     setStreaming,
     setAbortController,
   } = useChatStore();
@@ -89,6 +100,7 @@ function App({ mode = "chat" }: AppProps) {
   const input = mode === "chat" ? activeConversation?.draftInput || "" : homeInput;
   const messages = activeConversation?.messages || [];
   const uploadingImages = activeConversation?.uploadingImages || [];
+  const uploadingFiles = activeConversation?.uploadingFiles || [];
   const isStreaming = activeConversation?.isStreaming || false;
   const abortController = routeConversationId
     ? abortControllers[routeConversationId] || null
@@ -112,6 +124,7 @@ function App({ mode = "chat" }: AppProps) {
     messageInputRef,
     messages,
     uploadingImages,
+    uploadingFiles,
   });
 
   const sendMessage = useSendMessage({
@@ -120,8 +133,10 @@ function App({ mode = "chat" }: AppProps) {
     input,
     isStreaming,
     uploadingImages,
+    uploadingFiles,
     navigate,
     clearUploadingImages,
+    clearUploadingFiles,
     setInput: setDraftInput,
     addUiMessage,
     updateUiMessageText,
@@ -189,30 +204,79 @@ function App({ mode = "chat" }: AppProps) {
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    // 图片上传在聊天页归属当前会话，在首页则先创建会话再挂载草稿图片。
+    // 上传资源始终先绑定到目标会话，避免首页跳转和会话切换时草稿串扰。
     const files = Array.from(event.target.files || []);
     const nextImages: UploadingImage[] = files
-      .filter((file) => file.type.startsWith("image/"))
+      .filter(isImageFile)
       .map((file) => ({
         id: uid("img"),
         file,
         url: URL.createObjectURL(file),
       }));
+    const textFileInputs = files.filter((file) => !isImageFile(file));
 
-    if (!nextImages.length) {
+    if (!nextImages.length && !textFileInputs.length) {
       event.target.value = "";
       return;
     }
+
+    const targetConversationId =
+      mode === "chat" && routeConversationId ? routeConversationId : createConversation();
+    const existingFiles =
+      useChatStore.getState().conversations[targetConversationId]?.uploadingFiles || [];
+    const activeFileCount = existingFiles.filter(
+      (item) => item.status !== "error",
+    ).length;
+    let acceptedFileCount = 0;
+    const nextTextFiles: UploadingTextFile[] = textFileInputs.map((file) => {
+      if (activeFileCount + acceptedFileCount >= MAX_TEXT_FILE_COUNT) {
+        return createUploadingTextFile(
+          file,
+          "error",
+          `单个会话最多上传 ${MAX_TEXT_FILE_COUNT} 个文本文件。`,
+        );
+      }
+
+      const validationError = validateTextFile(file);
+      if (validationError) {
+        return createUploadingTextFile(file, "error", validationError);
+      }
+
+      acceptedFileCount += 1;
+      return createUploadingTextFile(file);
+    });
+
+    if (nextImages.length) {
+      addUploadingImages(targetConversationId, nextImages);
+    }
+    if (nextTextFiles.length) {
+      addUploadingFiles(targetConversationId, nextTextFiles);
+    }
+
+    nextTextFiles
+      .filter((file) => file.status === "parsing")
+      .forEach((file) => {
+        void parseTextFile(file.file)
+          .then((text) => {
+            updateUploadingFile(targetConversationId, file.id, {
+              status: "ready",
+              text,
+            });
+          })
+          .catch((error) => {
+            updateUploadingFile(targetConversationId, file.id, {
+              status: "error",
+              error: error instanceof Error ? error.message : "文件读取失败，请重试。",
+            });
+          });
+      });
 
     if (mode === "chat" && routeConversationId) {
-      addUploadingImages(routeConversationId, nextImages);
       event.target.value = "";
       return;
     }
 
-    const nextId = createConversation();
-    addUploadingImages(nextId, nextImages);
-    navigate(`/chat/${nextId}`, {
+    navigate(`/chat/${targetConversationId}`, {
       state: {
         draftPrompt: homeInput,
         shouldAutoSend: false,
@@ -308,6 +372,7 @@ function App({ mode = "chat" }: AppProps) {
         theme={theme}
         isStreaming={isStreaming}
         uploadingImages={uploadingImages}
+        uploadingFiles={uploadingFiles}
         messageInputRef={messageInputRef}
         fileInputRef={fileInputRef}
         onInputChange={handleInputChange}
@@ -318,6 +383,11 @@ function App({ mode = "chat" }: AppProps) {
         onRemoveImage={(imageId) => {
           if (routeConversationId) {
             removeUploadingImage(routeConversationId, imageId);
+          }
+        }}
+        onRemoveFile={(fileId) => {
+          if (routeConversationId) {
+            removeUploadingFile(routeConversationId, fileId);
           }
         }}
         onStop={stopStreaming}

@@ -8,7 +8,12 @@
 
 import { useEffect } from "react";
 import type { RefObject } from "react";
-import type { ThemeMode, UiMessage, UploadingImage } from "../types/chat";
+import type {
+  ThemeMode,
+  UiMessage,
+  UploadingImage,
+  UploadingTextFile,
+} from "../types/chat";
 import { useChatStore } from "../store/chatStore";
 import { scrollToBottom } from "../utils/helpers";
 
@@ -20,6 +25,7 @@ interface UseAppEffectsParams {
   messageInputRef: RefObject<HTMLTextAreaElement | null>;
   messages: UiMessage[];
   uploadingImages: UploadingImage[];
+  uploadingFiles: UploadingTextFile[];
 }
 
 export function useAppEffects({
@@ -30,6 +36,7 @@ export function useAppEffects({
   messageInputRef,
   messages,
   uploadingImages,
+  uploadingFiles,
 }: UseAppEffectsParams) {
   // 主题同步：更新 body data-theme 和聊天激活态 class，同时切换高亮 CSS。
   useEffect(() => {
@@ -71,7 +78,7 @@ export function useAppEffects({
   // 消息或上传预览变化后自动滚动到底，保证最新内容可见。
   useEffect(() => {
     scrollToBottom();
-  }, [messages, uploadingImages]);
+  }, [messages, uploadingImages, uploadingFiles]);
 
   // 组件卸载时兜底清理对象 URL，防止上传预览造成内存泄漏。
   useEffect(() => {

@@ -28,23 +28,39 @@ const AssistantMessage = memo(function AssistantMessage({
   const html = useMemo(() => renderMarkdownToHtml(text), [text]);
 
   useLayoutEffect(() => {
-    // 每次 HTML 变化后为代码块补高亮和复制按钮，历史消息依靠 memo 避免被父级重渲染覆盖。
+    // 流式结束时 html 可能不再变化，但 DOM 会经历最后一次稳定写入，这里主动补跑增强。
     const container = containerRef.current;
     if (!container) {
       return;
     }
 
-    enhanceCodeBlocks(container);
-    const frameId = window.requestAnimationFrame(() => {
+    const enhanceCurrentBlocks = () => {
       if (containerRef.current) {
         enhanceCodeBlocks(containerRef.current);
       }
+    };
+
+    enhanceCurrentBlocks();
+    const frameId = window.requestAnimationFrame(enhanceCurrentBlocks);
+    const settleTimerId = window.setTimeout(() => {
+      enhanceCurrentBlocks();
+    }, 120);
+    const finalTimerId = window.setTimeout(() => {
+      enhanceCurrentBlocks();
+    }, 360);
+
+    const observer = new MutationObserver(() => {
+      enhanceCurrentBlocks();
     });
+    observer.observe(container, { childList: true, subtree: true });
 
     return () => {
       window.cancelAnimationFrame(frameId);
+      window.clearTimeout(settleTimerId);
+      window.clearTimeout(finalTimerId);
+      observer.disconnect();
     };
-  }, [html]);
+  }, [html, isStreaming]);
 
   // 仅在流式且当前文本为空时展示打字占位。
   const showTyping = isStreaming && !text.trim();

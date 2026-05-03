@@ -41,6 +41,22 @@ export interface UploadingImage {
   url: string;
 }
 
+export type UploadingFileStatus = "parsing" | "ready" | "error";
+
+export interface UploadingTextFile {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+  extension: string;
+  status: UploadingFileStatus;
+  text: string;
+  error?: string;
+  truncated?: boolean;
+  createdAt: number;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -51,6 +67,7 @@ export interface Conversation {
   messages: UiMessage[];
   chatHistory: ApiMessage[];
   uploadingImages: UploadingImage[];
+  uploadingFiles: UploadingTextFile[];
   isStreaming: boolean;
 }
 
