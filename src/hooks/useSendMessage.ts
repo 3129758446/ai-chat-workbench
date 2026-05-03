@@ -27,6 +27,77 @@ import {
 } from "../utils/helpers";
 import { buildUserMessageContent } from "../utils/messageContent";
 
+function createTypewriterUpdater(onText: (text: string) => void) {
+  let shownText = "";
+  let targetText = "";
+  let timerId: number | null = null;
+  const waiters: Array<() => void> = [];
+
+  const resolveWaiters = () => {
+    if (shownText !== targetText) {
+      return;
+    }
+    while (waiters.length) {
+      waiters.shift()?.();
+    }
+  };
+
+  const stopTimer = () => {
+    if (timerId === null) {
+      return;
+    }
+    window.clearInterval(timerId);
+    timerId = null;
+  };
+
+  const step = () => {
+    const backlog = targetText.length - shownText.length;
+    if (backlog <= 0) {
+      stopTimer();
+      resolveWaiters();
+      return;
+    }
+
+    // 服务端可能一次吐出大块内容，这里按 backlog 自适应追赶，既顺滑又不拖太久。
+    const chunkSize = Math.max(1, Math.min(16, Math.ceil(backlog / 28)));
+    shownText = targetText.slice(0, shownText.length + chunkSize);
+    onText(shownText);
+  };
+
+  const ensureTimer = () => {
+    if (timerId !== null) {
+      return;
+    }
+    timerId = window.setInterval(step, 16);
+  };
+
+  return {
+    push(nextText: string) {
+      if (nextText.length < targetText.length) {
+        shownText = nextText;
+        onText(shownText);
+      }
+      targetText = nextText;
+      ensureTimer();
+    },
+    flush(finalText: string) {
+      targetText = finalText;
+      ensureTimer();
+      return new Promise<void>((resolve) => {
+        if (shownText === targetText) {
+          resolve();
+          return;
+        }
+        waiters.push(resolve);
+      });
+    },
+    cancel() {
+      stopTimer();
+      waiters.splice(0).forEach((resolve) => resolve());
+    },
+  };
+}
+
 interface UseSendMessageParams {
   mode: "home" | "chat"; // 当前页面模式：首页仅负责收集问题并跳转，聊天页才实际发请求
   conversationId: string | null;
@@ -198,6 +269,9 @@ export function useSendMessage({
       const controller = new AbortController(); // 创建控制器实例，用于可能的请求中断操作
       setAbortController(targetConversationId, controller);
       setStreaming(targetConversationId, true);
+      const typewriter = createTypewriterUpdater((nextText) => {
+        updateUiMessageText(targetConversationId, assistantId, nextText);
+      });
 
       try {
         // 10. 发起流式请求（核心中的核心）。
@@ -208,9 +282,9 @@ export function useSendMessage({
           apiKey,
           currentHistory,
           controller.signal,
-          (delta) =>
-            updateUiMessageText(targetConversationId, assistantId, delta),
+          (delta) => typewriter.push(delta),
         );
+        await typewriter.flush(finalText);
 
         // 11. 请求完成，把 AI 消息加入历史。
         pushHistory(targetConversationId, {
@@ -219,6 +293,7 @@ export function useSendMessage({
         });
       } catch (error) {
         // 12. 错误处理：中断/鉴权/限流/网络等类型给出可操作提示。
+        typewriter.cancel();
         let message = "请求失败，请稍后重试。";
         let shouldReplace = true;
 

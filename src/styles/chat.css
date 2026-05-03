@@ -123,6 +123,10 @@ body.chat-active .chat-panel {
   color: var(--text-soft);
 }
 
+.streaming-text {
+  white-space: pre-wrap;
+}
+
 .code-block-wrapper {
   position: relative;
   margin: 12px 0;

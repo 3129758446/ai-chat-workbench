@@ -45,7 +45,7 @@ export function useAppEffects({
       "chat-active",
       mode === "chat" && messagesCount > 0,
     );
-    document.body.classList.toggle("chat-layout", mode === "chat");
+    document.body.classList.toggle("chat-layout", true);
 
     const darkCss = document.getElementById(
       "hljs-theme-dark",

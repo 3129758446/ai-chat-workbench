@@ -28,37 +28,31 @@ const AssistantMessage = memo(function AssistantMessage({
   const html = useMemo(() => renderMarkdownToHtml(text), [text]);
 
   useLayoutEffect(() => {
-    // 流式结束时 html 可能不再变化，但 DOM 会经历最后一次稳定写入，这里主动补跑增强。
+    // 流式期间只让文本自然追加，避免高亮重写 DOM 导致打字机抖动。
     const container = containerRef.current;
     if (!container) {
       return;
     }
 
-    const enhanceCurrentBlocks = () => {
+    if (isStreaming) {
+      return;
+    }
+
+    enhanceCodeBlocks(container);
+    const frameId = window.requestAnimationFrame(() => {
       if (containerRef.current) {
         enhanceCodeBlocks(containerRef.current);
       }
-    };
-
-    enhanceCurrentBlocks();
-    const frameId = window.requestAnimationFrame(enhanceCurrentBlocks);
-    const settleTimerId = window.setTimeout(() => {
-      enhanceCurrentBlocks();
-    }, 120);
-    const finalTimerId = window.setTimeout(() => {
-      enhanceCurrentBlocks();
-    }, 360);
-
-    const observer = new MutationObserver(() => {
-      enhanceCurrentBlocks();
     });
-    observer.observe(container, { childList: true, subtree: true });
+    const settleTimerId = window.setTimeout(() => {
+      if (containerRef.current) {
+        enhanceCodeBlocks(containerRef.current);
+      }
+    }, 120);
 
     return () => {
       window.cancelAnimationFrame(frameId);
       window.clearTimeout(settleTimerId);
-      window.clearTimeout(finalTimerId);
-      observer.disconnect();
     };
   }, [html, isStreaming]);
 
@@ -75,6 +69,8 @@ const AssistantMessage = memo(function AssistantMessage({
             <span></span>
           </span>
         </div>
+      ) : isStreaming ? (
+        <div className="markdown-body streaming-text">{text}</div>
       ) : (
         <div
           ref={containerRef}

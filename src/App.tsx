@@ -94,8 +94,11 @@ function App({ mode = "chat" }: AppProps) {
   } = useChatStore();
 
   const activeConversation =
-    (routeConversationId && conversations[routeConversationId]) ||
-    (currentConversationId ? conversations[currentConversationId] : undefined);
+    mode === "chat"
+      ? (routeConversationId && conversations[routeConversationId]) ||
+        (currentConversationId ? conversations[currentConversationId] : undefined)
+      : undefined;
+  const showConversationLayout = true;
 
   const input = mode === "chat" ? activeConversation?.draftInput || "" : homeInput;
   const messages = activeConversation?.messages || [];
@@ -158,19 +161,22 @@ function App({ mode = "chat" }: AppProps) {
   };
 
   const handleClearConversation = () => {
-    // 首页清空仅重置草稿；聊天页则删除当前会话记录。
+    // 首页清空仅重置草稿；聊天页清掉当前会话后回到首页，下一次输入会创建新会话。
     if (!routeConversationId) {
       setHomeInput("");
       return;
     }
 
     stopStreaming();
-    handleDeleteConversation(routeConversationId);
+    deleteConversation(routeConversationId);
+    setHomeInput("");
+    navigate("/", { replace: true });
   };
 
   const handleCreateConversation = () => {
-    const nextId = createConversation();
-    navigate(`/chat/${nextId}`);
+    // “新建”回到首页态，等用户真正输入或上传时再创建会话，避免生成空会话卡片。
+    setHomeInput("");
+    navigate("/");
   };
 
   const handleSelectConversation = (conversationId: string) => {
@@ -343,8 +349,10 @@ function App({ mode = "chat" }: AppProps) {
     <>
       <div className="app-bg"></div>
 
-      <div className={`app-shell ${mode === "chat" ? "chat-shell" : "home-shell"}`}>
-        {mode === "chat" ? (
+      <div
+        className={`app-shell ${showConversationLayout ? "chat-shell" : "home-shell"}`}
+      >
+        {showConversationLayout ? (
           <ConversationSidebar
             conversations={conversationsForSidebar}
             currentConversationId={routeConversationId}
