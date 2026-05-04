@@ -7,45 +7,39 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { ChangeEvent, KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+
+// 组件引入
 import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { ConversationSidebar } from "./components/ConversationSidebar";
 import { WelcomeSection } from "./components/WelcomeSection";
+
+// Hooks 引入
 import { useAppEffects } from "./hooks/useAppEffects";
 import { useSendMessage } from "./hooks/useSendMessage";
+import { useConversationManager } from "./hooks/useConversationManager";
+import { useFileHandlers } from "./hooks/useFileHandlers";
 import { useChatStore } from "./store";
-import type {
-  Conversation,
-  UploadingImage,
-  UploadingTextFile,
-} from "./types/chat";
-import {
-  createUploadingTextFile,
-  isImageFile,
-  MAX_TEXT_FILE_COUNT,
-  parseTextFile,
-  validateTextFile,
-} from "./utils/fileUpload";
-import { uid } from "./utils/helpers";
+
+// 类型与工具
+import type { Conversation } from "./types/chat";
 
 type AppMode = "home" | "chat";
-
-interface RouteState {
-  draftPrompt?: string;
-  shouldAutoSend?: boolean;
-}
 
 interface AppProps {
   mode?: AppMode;
 }
 
+/**
+ * 辅助函数：从完整会话对象中提取侧边栏展示所需的摘要信息
+ * 目的：减少传递给 Sidebar 的数据量，优化渲染性能
+ */
 function getConversationSummaries(
   conversations: Record<string, Conversation>,
   orderedIds: string[],
 ) {
-  // 侧栏只消费轻量摘要，避免把完整会话对象直接暴露给展示组件。
   return orderedIds
     .map((id) => conversations[id])
     .filter(Boolean)
@@ -56,6 +50,11 @@ function getConversationSummaries(
       lastMessagePreview: conversation.lastMessagePreview,
       isStreaming: conversation.isStreaming,
     }));
+}
+
+interface RouteState {
+  draftPrompt?: string;
+  shouldAutoSend?: boolean;
 }
 
 function App({ mode = "chat" }: AppProps) {
@@ -88,56 +87,40 @@ function App({ mode = "chat" }: AppProps) {
     updateUiMessageText,
     pushHistory,
     removeHistoryMessage,
-    addUploadingImages,
     removeUploadingImage,
     clearUploadingImages,
-    addUploadingFiles,
-    updateUploadingFile,
     removeUploadingFile,
     clearUploadingFiles,
     setStreaming,
     setAbortController,
   } = useChatStore();
 
+  const {
+    handleCreateConversation: handleCreateConversationBase,
+    handleSelectConversation,
+    handleDeleteConversation: handleDeleteConversationBase,
+  } = useConversationManager(routeConversationId);
+
+  const { handleFileChange } = useFileHandlers(
+    mode,
+    routeConversationId,
+    navigate,
+    homeInput,
+    setHomeInput,
+  );
+
   const activeConversation =
     mode === "chat"
       ? (routeConversationId && conversations[routeConversationId]) ||
-        (currentConversationId
-          ? conversations[currentConversationId]
-          : undefined)
+        (currentConversationId ? conversations[currentConversationId] : undefined)
       : undefined;
-  const showConversationLayout = true;
 
-  const input =
-    mode === "chat" ? activeConversation?.draftInput || "" : homeInput;
+  const input = mode === "chat" ? activeConversation?.draftInput || "" : homeInput;
   const messages = activeConversation?.messages || [];
   const uploadingImages = activeConversation?.uploadingImages || [];
   const uploadingFiles = activeConversation?.uploadingFiles || [];
   const isStreaming = activeConversation?.isStreaming || false;
-  const abortController = routeConversationId
-    ? abortControllers[routeConversationId] || null
-    : null;
-
-  useEffect(() => {
-    // 聊天页刷新或直达时，确保路由上的会话在 store 中存在。
-    if (mode !== "chat" || !routeConversationId) {
-      return;
-    }
-
-    ensureConversation(routeConversationId);
-    switchConversation(routeConversationId);
-  }, [mode, routeConversationId, ensureConversation, switchConversation]);
-
-  useAppEffects({
-    theme,
-    mode,
-    messagesCount: messages.length,
-    input,
-    messageInputRef,
-    messages,
-    uploadingImages,
-    uploadingFiles,
-  });
+  const abortController = routeConversationId ? abortControllers[routeConversationId] || null : null;
 
   const sendMessage = useSendMessage({
     mode,
@@ -162,21 +145,16 @@ function App({ mode = "chat" }: AppProps) {
   });
 
   const stopStreaming = () => {
-    // 通过当前会话对应的 AbortController 停止流式返回。
-    if (!routeConversationId || !abortController) {
-      return;
-    }
+    if (!routeConversationId || !abortController) return;
     abortController.abort();
     setAbortController(routeConversationId, null);
   };
 
   const handleClearConversation = () => {
-    // 首页清空仅重置草稿；聊天页清掉当前会话后回到首页，下一次输入会创建新会话。
     if (!routeConversationId) {
       setHomeInput("");
       return;
     }
-
     stopStreaming();
     deleteConversation(routeConversationId);
     setHomeInput("");
@@ -184,132 +162,42 @@ function App({ mode = "chat" }: AppProps) {
   };
 
   const handleCreateConversation = () => {
-    // “新建”回到首页态，等用户真正输入或上传时再创建会话，避免生成空会话卡片。
     setHomeInput("");
-    navigate("/");
-  };
-
-  const handleSelectConversation = (conversationId: string) => {
-    navigate(`/chat/${conversationId}`);
+    handleCreateConversationBase();
   };
 
   const handleDeleteConversation = (conversationId: string) => {
-    const isCurrent = routeConversationId === conversationId;
-    deleteConversation(conversationId);
-
-    if (!isCurrent) {
-      return;
-    }
-
-    const remainingIds = useChatStore.getState().orderedConversationIds;
-    if (remainingIds.length) {
-      navigate(`/chat/${remainingIds[0]}`, { replace: true });
-      return;
-    }
-
-    const nextId = createConversation();
-    navigate(`/chat/${nextId}`, { replace: true });
+    handleDeleteConversationBase(conversationId, stopStreaming);
   };
 
   const handleInputChange = (value: string) => {
     if (mode === "chat" && routeConversationId) {
       setDraftInput(routeConversationId, value);
-      return;
+    } else {
+      setHomeInput(value);
     }
-    setHomeInput(value);
   };
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    // 上传资源始终先绑定到目标会话，避免首页跳转和会话切换时草稿串扰。
-    const files = Array.from(event.target.files || []);
-    const nextImages: UploadingImage[] = files
-      .filter(isImageFile)
-      .map((file) => ({
-        id: uid("img"),
-        file,
-        url: URL.createObjectURL(file),
-      }));
-    const textFileInputs = files.filter((file) => !isImageFile(file));
-
-    if (!nextImages.length && !textFileInputs.length) {
-      event.target.value = "";
-      return;
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void sendMessage();
     }
-
-    const targetConversationId =
-      mode === "chat" && routeConversationId
-        ? routeConversationId
-        : createConversation();
-    const existingFiles =
-      useChatStore.getState().conversations[targetConversationId]
-        ?.uploadingFiles || [];
-    const activeFileCount = existingFiles.filter(
-      (item) => item.status !== "error",
-    ).length;
-    let acceptedFileCount = 0;
-    const nextTextFiles: UploadingTextFile[] = textFileInputs.map((file) => {
-      if (activeFileCount + acceptedFileCount >= MAX_TEXT_FILE_COUNT) {
-        return createUploadingTextFile(
-          file,
-          "error",
-          `单个会话最多上传 ${MAX_TEXT_FILE_COUNT} 个文本文件。`,
-        );
-      }
-
-      const validationError = validateTextFile(file);
-      if (validationError) {
-        return createUploadingTextFile(file, "error", validationError);
-      }
-
-      acceptedFileCount += 1;
-      return createUploadingTextFile(file);
-    });
-
-    if (nextImages.length) {
-      addUploadingImages(targetConversationId, nextImages);
-    }
-    if (nextTextFiles.length) {
-      addUploadingFiles(targetConversationId, nextTextFiles);
-    }
-
-    nextTextFiles
-      .filter((file) => file.status === "parsing")
-      .forEach((file) => {
-        void parseTextFile(file.file)
-          .then((text) => {
-            updateUploadingFile(targetConversationId, file.id, {
-              status: "ready",
-              text,
-            });
-          })
-          .catch((error) => {
-            updateUploadingFile(targetConversationId, file.id, {
-              status: "error",
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "文件读取失败，请重试。",
-            });
-          });
-      });
-
-    if (mode === "chat" && routeConversationId) {
-      event.target.value = "";
-      return;
-    }
-
-    navigate(`/chat/${targetConversationId}`, {
-      state: {
-        draftPrompt: homeInput,
-        shouldAutoSend: false,
-      } satisfies RouteState,
-    });
-    setHomeInput("");
-    event.target.value = "";
   };
+
+  const conversationsForSidebar = getConversationSummaries(
+    conversations,
+    orderedConversationIds,
+  );
 
   useEffect(() => {
-    // 处理首页跳转带入的草稿和自动发送标记，且只消费一次。
+    if (mode !== "chat" || !routeConversationId) return;
+    ensureConversation(routeConversationId);
+    switchConversation(routeConversationId);
+  }, [mode, routeConversationId, ensureConversation, switchConversation]);
+
+  useEffect(() => {
+    // 消费首页跳转时透传的草稿和自动发送标记，并做一次性去重。
     if (mode !== "chat" || !routeConversationId || isStreaming) {
       return;
     }
@@ -349,35 +237,30 @@ function App({ mode = "chat" }: AppProps) {
     setDraftInput,
   ]);
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void sendMessage();
-    }
-  };
-
-  const conversationsForSidebar = getConversationSummaries(
-    conversations,
-    orderedConversationIds,
-  );
+  useAppEffects({
+    theme,
+    mode,
+    messagesCount: messages.length,
+    input,
+    messageInputRef,
+    messages,
+    uploadingImages,
+    uploadingFiles,
+  });
 
   return (
     <>
       <div className="app-bg"></div>
 
-      <div
-        className={`app-shell ${showConversationLayout ? "chat-shell" : "home-shell"}`}
-      >
-        {showConversationLayout ? (
-          <ConversationSidebar
-            conversations={conversationsForSidebar}
-            currentConversationId={routeConversationId}
-            onCreateConversation={handleCreateConversation}
-            onSelectConversation={handleSelectConversation}
-            onRenameConversation={renameConversation}
-            onDeleteConversation={handleDeleteConversation}
-          />
-        ) : null}
+      <div className="app-shell chat-shell">
+        <ConversationSidebar
+          conversations={conversationsForSidebar}
+          currentConversationId={routeConversationId}
+          onCreateConversation={handleCreateConversation}
+          onSelectConversation={handleSelectConversation}
+          onRenameConversation={renameConversation}
+          onDeleteConversation={handleDeleteConversation}
+        />
 
         <main className="app">
           <WelcomeSection

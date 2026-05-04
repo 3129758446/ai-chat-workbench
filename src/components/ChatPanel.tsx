@@ -10,7 +10,8 @@ import {
   memo,
   useDeferredValue,
   useLayoutEffect,
-  useMemo,
+  useState,
+  useEffect,
   useRef,
 } from "react";
 import type { UiMessage } from "../types/chat";
@@ -31,37 +32,42 @@ const AssistantMessage = memo(function AssistantMessage({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const deferredStreamingText = useDeferredValue(text);
-  // Markdown 渲染结果缓存，避免无关更新重复计算。
-  const html = useMemo(() => renderMarkdownToHtml(text), [text]);
-  const streamingHtml = useMemo(() => {
+  
+  // 异步渲染状态
+  const [html, setHtml] = useState("");
+  const [streamingHtml, setStreamingHtml] = useState("");
+
+  // 处理全量渲染 (非流式态)
+  useEffect(() => {
+    if (isStreaming) return;
+    renderMarkdownToHtml(text).then(setHtml);
+  }, [text, isStreaming]);
+
+  // 处理流式渲染
+  useEffect(() => {
     if (!isStreaming || !deferredStreamingText.trim()) {
-      return "";
+      return;
     }
-    return renderMarkdownToHtml(deferredStreamingText);
+    renderMarkdownToHtml(deferredStreamingText).then(setStreamingHtml);
   }, [deferredStreamingText, isStreaming]);
+
+  // 派生计算：确保在非流式或文本为空时，streamingHtml 逻辑上为空
+  const effectiveStreamingHtml = isStreaming && deferredStreamingText.trim() ? streamingHtml : "";
 
   useLayoutEffect(() => {
     // 流式期间只让文本自然追加，避免高亮重写 DOM 导致打字机抖动。
     const container = containerRef.current;
-    if (!container) {
-      return;
-    }
+    if (!container || isStreaming) return;
 
-    if (isStreaming) {
-      return;
-    }
+    // 异步执行代码块增强
+    const enhance = async () => {
+      await enhanceCodeBlocks(container);
+    };
 
-    enhanceCodeBlocks(container);
-    const frameId = window.requestAnimationFrame(() => {
-      if (containerRef.current) {
-        enhanceCodeBlocks(containerRef.current);
-      }
-    });
-    const settleTimerId = window.setTimeout(() => {
-      if (containerRef.current) {
-        enhanceCodeBlocks(containerRef.current);
-      }
-    }, 120);
+    enhance();
+    
+    const frameId = window.requestAnimationFrame(enhance);
+    const settleTimerId = window.setTimeout(enhance, 120);
 
     return () => {
       window.cancelAnimationFrame(frameId);
@@ -83,10 +89,10 @@ const AssistantMessage = memo(function AssistantMessage({
           </span>
         </div>
       ) : isStreaming ? (
-        streamingHtml ? (
+        effectiveStreamingHtml ? (
           <div
             className="markdown-body streaming-markdown"
-            dangerouslySetInnerHTML={{ __html: streamingHtml }}
+            dangerouslySetInnerHTML={{ __html: effectiveStreamingHtml }}
           />
         ) : (
           <div className="markdown-body streaming-text">{text}</div>

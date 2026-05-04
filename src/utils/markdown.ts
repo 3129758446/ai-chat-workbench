@@ -2,13 +2,19 @@
  * 文件功能：Markdown 渲染增强模块，负责“解析 -> 净化 -> 高亮 -> 复制”。
  * 设计思路：
  * 1. 渲染链路分层：marked 负责语法解析，DOMPurify 负责安全净化。
- * 2. 高亮和复制按钮在渲染后做增强，避免与 markdown 解析耦合。
- * 3. 复制按钮按需注入并去重，支持流式更新时重复调用。
+ * 2. 性能优化：采用动态导入 (Dynamic Import) 加载 marked 和 highlight.js，减少初始包体积。
+ * 3. 高亮和复制按钮在渲染后做增强，避免与 markdown 解析耦合。
  */
 
 import DOMPurify from "dompurify";
-import hljs from "highlight.js";
-import { marked } from "marked";
+import type { HLJSApi } from "highlight.js";
+
+// --- 动态导入定义 ---
+// 注意：这里不使用顶层 import，而是定义类型，在需要时才加载
+type MarkedModule = typeof import("marked");
+
+let markedInstance: MarkedModule["marked"] | null = null;
+let hljsInstance: HLJSApi | null = null;
 
 const FORBIDDEN_MARKDOWN_TAGS = [
   "button",
@@ -19,23 +25,49 @@ const FORBIDDEN_MARKDOWN_TAGS = [
   "textarea",
 ];
 
-// 配置 Markdown 行为为更贴近聊天场景的 GitHub 风格。
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
+/**
+ * 内部辅助：确保渲染引擎已加载
+ * 演示“异步化加载”的核心逻辑
+ */
+async function loadRenderer() {
+  if (markedInstance && hljsInstance) {
+    return { marked: markedInstance, hljs: hljsInstance };
+  }
 
-// 将 Markdown 文本渲染为安全 HTML。
-// marked 解析结果可能包含用户输入的内容，必须经过 DOMPurify 净化以防 XSS 攻击。
-export function renderMarkdownToHtml(markdown: string): string {
-  const rawHtml = marked.parse(markdown || "");
+  // 使用 Promise.all 并行加载两个重型库
+  const [markedMod, hljsMod] = await Promise.all([
+    import("marked"),
+    import("highlight.js"),
+  ]);
+
+  markedInstance = markedMod.marked;
+  hljsInstance = hljsMod.default;
+
+  // 配置 Markdown 行为
+  markedInstance.setOptions({
+    gfm: true,
+    breaks: true,
+  });
+
+  return { marked: markedInstance, hljs: hljsInstance };
+}
+
+/**
+ * 将 Markdown 文本渲染为安全 HTML (异步版本)
+ * 演示：调用方需要使用 await 或 .then()
+ */
+export async function renderMarkdownToHtml(markdown: string): Promise<string> {
+  const { marked } = await loadRenderer();
+  const rawHtml = await marked.parse(markdown || "");
   return DOMPurify.sanitize(String(rawHtml), {
     FORBID_TAGS: FORBIDDEN_MARKDOWN_TAGS,
   });
 }
 
+/**
+ * 写入剪贴板工具
+ */
 async function writeClipboardText(text: string): Promise<void> {
-  // 优先使用 Clipboard API，失败时回退到 textarea 方案。
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
     return;
@@ -52,6 +84,9 @@ async function writeClipboardText(text: string): Promise<void> {
   document.body.removeChild(textarea);
 }
 
+/**
+ * 确保代码块有包装层，用于定位复制按钮
+ */
 function ensureCodeBlockWrapper(pre: HTMLElement): HTMLElement {
   const parent = pre.parentElement;
   if (parent?.classList.contains("code-block-wrapper")) {
@@ -65,18 +100,25 @@ function ensureCodeBlockWrapper(pre: HTMLElement): HTMLElement {
   return wrapper;
 }
 
+/**
+ * 提取代码语言
+ */
 function getCodeLanguage(codeEl: HTMLElement): string {
   const languageClass = [...codeEl.classList].find((className) =>
     className.startsWith("language-"),
   );
-  return String(languageClass || "").replace(/^language-/, "").toLowerCase();
+  return String(languageClass || "")
+    .replace(/^language-/, "")
+    .toLowerCase();
 }
 
-function highlightCodeElement(codeEl: HTMLElement): void {
-  if (codeEl.dataset.highlighted === "true") {
-    return;
-  }
+/**
+ * 执行语法高亮 (异步)
+ */
+async function highlightCodeElement(codeEl: HTMLElement): Promise<void> {
+  if (codeEl.dataset.highlighted === "true") return;
 
+  const { hljs } = await loadRenderer();
   const text = codeEl.textContent || "";
   const language = getCodeLanguage(codeEl);
 
@@ -87,57 +129,53 @@ function highlightCodeElement(codeEl: HTMLElement): void {
         : hljs.highlightAuto(text).value;
 
     codeEl.innerHTML = highlighted;
-    codeEl.classList.add("hljs");
-    codeEl.dataset.highlighted = "true";
   } catch {
     codeEl.textContent = text;
+  } finally {
     codeEl.classList.add("hljs");
     codeEl.dataset.highlighted = "true";
   }
 }
 
-// 对容器内代码块做二次增强：代码高亮 + 复制按钮。
-export function enhanceCodeBlocks(container: HTMLElement): void {
-  // 1. 查找所有 code 块并执行语法高亮。
+/**
+ * 对容器内代码块做二次增强：代码高亮 + 复制按钮
+ */
+export async function enhanceCodeBlocks(container: HTMLElement): Promise<void> {
   const blocks = container.querySelectorAll("pre > code");
 
-  blocks.forEach((codeEl) => {
-    const codeElement = codeEl as HTMLElement;
+  // 使用 Promise.all 并行处理所有代码块的高亮
+  await Promise.all(
+    Array.from(blocks).map(async (codeEl) => {
+      const codeElement = codeEl as HTMLElement;
 
-    // 2. 先执行语法高亮，不让未知语言影响后续复制按钮注入。
-    highlightCodeElement(codeElement);
+      // 1. 高亮
+      await highlightCodeElement(codeElement);
 
-    // 3. 如果代码块已存在复制按钮，则跳过。
-    const pre = codeElement.parentElement;
-    if (!pre) {
-      return;
-    }
+      // 2. 注入复制按钮
+      const pre = codeElement.parentElement;
+      if (!pre) return;
 
-    const wrapper = ensureCodeBlockWrapper(pre);
-    if (wrapper.querySelector(".copy-btn")) {
-      return;
-    }
+      const wrapper = ensureCodeBlockWrapper(pre);
+      if (wrapper.querySelector(".copy-btn")) return;
 
-    // 4. 创建复制按钮，注入到代码块外层，避免被 pre 的滚动区域裁剪。
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "copy-btn";
-    copyBtn.textContent = "复制";
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "copy-btn";
+      copyBtn.textContent = "复制";
 
-    // 5. 复制行为做短反馈，提升交互可感知性。
-    copyBtn.addEventListener("click", async () => {
-      try {
-        // 使用 Clipboard API 复制代码内容，兼容性较好且无需额外库。
-        await writeClipboardText(codeElement.textContent || "");
-        copyBtn.textContent = "已复制";
-      } catch {
-        copyBtn.textContent = "复制失败";
-      }
-      window.setTimeout(() => {
-        copyBtn.textContent = "复制";
-      }, 1200);
-    });
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await writeClipboardText(codeElement.textContent || "");
+          copyBtn.textContent = "已复制";
+        } catch {
+          copyBtn.textContent = "复制失败";
+        }
+        window.setTimeout(() => {
+          copyBtn.textContent = "复制";
+        }, 1200);
+      });
 
-    wrapper.appendChild(copyBtn);
-  });
+      wrapper.appendChild(copyBtn);
+    }),
+  );
 }
