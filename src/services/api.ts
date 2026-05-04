@@ -25,7 +25,7 @@ export interface ApiError extends Error {
 }
 
 // 检查消息中是否存在图片片段，用于决定模型类型。
-function hasImageInMessages(messages: ApiMessage[]): boolean {
+export function hasImageInMessages(messages: ApiMessage[]): boolean {
   return messages.some(
     (message) =>
       // 兼容 content 既有字符串又有结构化片段的情况
@@ -35,7 +35,7 @@ function hasImageInMessages(messages: ApiMessage[]): boolean {
 }
 
 // 根据 provider 和消息内容动态切换模型。
-function resolveModelByMessages(
+export function resolveModelByMessages(
   provider: ChatProvider,
   messages: ApiMessage[],
 ): string {
@@ -47,7 +47,7 @@ function resolveModelByMessages(
 }
 
 // 组装灵犀端点列表：自定义端点优先，默认端点作为回退。
-function getLingxiApiEndpoints(): string[] {
+export function getLingxiApiEndpoints(): string[] {
   const custom = String(
     localStorage.getItem(API_BASE_URL_STORAGE) || "",
   ).trim();
@@ -87,7 +87,7 @@ function getApiEndpoints(provider: ChatProvider): string[] {
 }
 
 // 判断错误是否属于可重试的传输层异常。
-function isTransportError(error: unknown): boolean {
+export function isTransportError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
