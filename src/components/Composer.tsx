@@ -167,6 +167,7 @@ export function Composer({
               type="button"
               title="发送"
               onClick={onSend}
+              disabled={!canSend}
             >
               <span className="btn-glyph send-glyph">↑</span>
             </button>
