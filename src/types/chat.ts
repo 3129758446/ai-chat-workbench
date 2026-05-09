@@ -46,6 +46,7 @@ export interface UploadingImage {
 
 export type UploadingFileStatus = "parsing" | "ready" | "error";
 
+// 上传中的文本文件，包含文件元数据和解析状态。
 export interface UploadingTextFile {
   id: string;
   file: File;
@@ -60,6 +61,7 @@ export interface UploadingTextFile {
   createdAt: number;
 }
 
+// 会话实体，包含所有会话相关状态。
 export interface Conversation {
   id: string;
   title: string;
@@ -74,13 +76,15 @@ export interface Conversation {
   isStreaming: boolean;
 }
 
+// 会话草稿，包含基本属性，不包含运行态对象。
+// 用于持久化层保存会话状态，避免保存 File、AbortController 等运行态对象。
 export interface ConversationDraft {
-  id: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-  lastMessagePreview: string;
-  draftInput: string;
-  messages: UiMessage[];
-  chatHistory: ApiMessage[];
+  id: string; // 会话 ID，默认值为随机字符串。
+  title: string; // 会话标题，默认值为 "New Conversation"。
+  createdAt: number; // 创建时间，用于排序。
+  updatedAt: number; // 最后一次更新时间，用于排序。
+  lastMessagePreview: string; // 最后一条消息预览，默认值为空字符串。
+  draftInput: string; // 草稿输入，用于保存用户输入的文本。
+  messages: UiMessage[]; // 聊天记录，包含所有消息。
+  chatHistory: ApiMessage[]; // 聊天历史记录，包含所有 API 消息。
 }

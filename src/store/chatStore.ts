@@ -16,8 +16,10 @@ import { createRuntimeActions } from "./chatStore.runtime";
 import type { ChatState } from "./chatStore.types";
 import { createUploadActions } from "./chatStore.uploads";
 
+// 创建聊天状态中心
+// 组合初始状态与各功能组，形成统一的 store 入口。
 export const useChatStore = create<ChatState>()(
-  persist(
+  persist( // 开启状态持久化
     (set, get) => ({
       theme: DEFAULT_THEME,
       modelProvider: "auto",
@@ -27,12 +29,12 @@ export const useChatStore = create<ChatState>()(
       abortControllers: {},
 
       // 先组合运行态动作，再组合会话、消息、上传动作，保持模块边界清晰。
-      ...createRuntimeActions(set),
-      ...createConversationActions(set, get),
-      ...createMessageActions(set),
-      ...createUploadActions(set),
-    }),
+      ...createRuntimeActions(set), // 运行态动作，如主题切换、模型选择等
+      ...createConversationActions(set, get), // 会话动作，如创建、切换、删除会话等
+      ...createMessageActions(set), // 消息动作，如添加、删除、更新消息等
+      ...createUploadActions(set), // 上传动作，如添加、删除、更新上传文件等
+    }), 
     // persist 规则单独收口，主文件只负责装配。
-    createChatPersistOptions(),
+    createChatPersistOptions(), // 配置状态持久化规则，如本地存储、服务器端存储等
   ),
 );

@@ -54,6 +54,7 @@ export function isImageFile(file: File): boolean {
   return file.type.startsWith("image/");
 }
 
+// 检查文件是否为支持的文本文件类型。
 export function isSupportedTextFile(file: File): boolean {
   const extension = getFileExtension(file.name);
   const mime = file.type.toLowerCase();
@@ -64,6 +65,7 @@ export function isSupportedTextFile(file: File): boolean {
   );
 }
 
+// 创建一个上传中的文本文件对象。
 export function createUploadingTextFile(
   file: File,
   status: UploadingTextFile["status"] = "parsing",
@@ -83,6 +85,7 @@ export function createUploadingTextFile(
   };
 }
 
+// 验证文本文件是否符合要求。
 export function validateTextFile(file: File): string | null {
   if (!isSupportedTextFile(file)) {
     return "不支持该文件类型，仅支持 txt、md、json、csv、log 和常见代码文本文件。";
@@ -95,6 +98,7 @@ export function validateTextFile(file: File): string | null {
   return null;
 }
 
+// 解析文本文件内容，返回文本字符串。
 export async function parseTextFile(file: File): Promise<string> {
   if (typeof file.text !== "function") {
     throw new Error("当前浏览器不支持读取该文件，请更换浏览器后重试。");
@@ -108,6 +112,7 @@ export async function parseTextFile(file: File): Promise<string> {
   return text;
 }
 
+// 构建包含文件内容的提示文本。
 export function buildFileQuestionText(
   question: string,
   files: UploadingTextFile[],
@@ -128,12 +133,14 @@ export function buildFileQuestionText(
       return;
     }
 
+    // 为每个文件补一段稳定的结构化头信息，方便模型区分“文件元信息”和“正文内容”。
     const header = [
       `[文件 ${index + 1}]`,
       `文件名：${file.name}`,
       `类型：${file.type || file.extension || "文本文件"}`,
       "内容：",
     ].join("\n");
+    // 预先给 header 留出预算，避免文件正文把提示模板本身挤掉。
     const budget = Math.max(0, remaining - header.length - 2);
     const body = file.text.slice(0, budget);
     if (body.length < file.text.length) {
@@ -148,6 +155,7 @@ export function buildFileQuestionText(
     ? "\n\n注意：由于上下文长度限制，部分文件内容已截断。"
     : "";
 
+  // 最终 prompt 保持固定骨架，降低模型在多文件场景下答非所问的概率。
   return [
     "以下是用户上传的文件内容，请基于这些内容回答问题。",
     "",

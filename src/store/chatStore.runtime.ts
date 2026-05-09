@@ -9,6 +9,7 @@
 import { THEME_STORAGE } from "../constants";
 import type { ChatState, ChatStoreSet } from "./chatStore.types";
 
+// 创建运行态动作函数，用于更新主题、模型选择、流式状态和请求控制器。
 export function createRuntimeActions(
   set: ChatStoreSet,
 ): Pick<

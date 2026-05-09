@@ -16,6 +16,7 @@ export function normalizeTheme(theme: string | null | undefined): ThemeMode {
 
 export const DEFAULT_THEME = normalizeTheme(localStorage.getItem(THEME_STORAGE));
 
+// 从 API 消息内容中提取文本或图片数量摘要。
 export function previewFromContent(content: ApiMessage["content"]): string {
   if (typeof content === "string") {
     return content.trim();
@@ -36,6 +37,7 @@ export function previewFromContent(content: ApiMessage["content"]): string {
   return imageCount ? `[图片] ${imageCount} 张` : "";
 }
 
+// 对文本进行截断，确保不超过最大长度，同时保留单词边界。
 export function shorten(text: string, max = 48): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -44,6 +46,7 @@ export function shorten(text: string, max = 48): string {
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
 }
 
+// 创建一个会话记录，包含默认字段和初始化状态。
 export function createConversationRecord(
   id = uid("conversation"),
   title = "新会话",
@@ -51,20 +54,21 @@ export function createConversationRecord(
   const now = Date.now();
   // 统一在这里定义会话默认值，避免多个动作模块手写初始化结构。
   return {
-    id,
-    title,
-    createdAt: now,
-    updatedAt: now,
-    lastMessagePreview: "",
-    draftInput: "",
-    messages: [],
-    chatHistory: [],
-    uploadingImages: [],
-    uploadingFiles: [],
-    isStreaming: false,
+    id, 
+    title, // 会话标题，默认值为“新会话”。
+    createdAt: now, // 会话创建时间，默认值为当前时间。
+    updatedAt: now, // 会话最后更新时间，默认值为当前时间。
+    lastMessagePreview: "", // 最新消息预览，默认值为空字符串。
+    draftInput: "", // 上传中的文本文件草稿，默认值为空字符串。
+    messages: [], // 会话消息列表，默认值为空数组。
+    chatHistory: [], // 会话历史消息列表，默认值为空数组。
+    uploadingImages: [], // 上传中的图片预览列表，默认值为空数组。
+    uploadingFiles: [], // 上传中的文本文件草稿列表，默认值为空数组。
+    isStreaming: false, // 是否正在流式接收消息，默认值为 false。
   };
 }
 
+// 推导会话摘要，用于列表展示。
 export function deriveConversationPatch(
   conversation: Conversation,
 ): Partial<Conversation> {
@@ -89,6 +93,7 @@ export function deriveConversationPatch(
   };
 }
 
+// 恢复持久化会话记录，确保默认值和运行态状态一致。
 export function normalizePersistedConversation(
   draft: ConversationDraft | undefined,
   fallbackId: string,
@@ -108,6 +113,7 @@ export function normalizePersistedConversation(
   };
 }
 
+// 释放会话上传的图片 URL，避免内存泄漏。
 export function revokeConversationImageUrls(conversation: Conversation): void {
   // 批量释放本地预览 URL，避免删除会话或清空草稿后产生内存泄漏。
   conversation.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));

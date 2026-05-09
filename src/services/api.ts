@@ -78,6 +78,7 @@ export function getLingxiApiEndpoints(): string[] {
   );
 }
 
+// 根据 provider 选择合适的端点列表。
 function getApiEndpoints(provider: ChatProvider): string[] {
   if (provider === "deepseek") {
     return [DEEPSEEK_API_ENDPOINT];
@@ -164,7 +165,7 @@ async function streamByEndpoint(
   let buffer = "";
   let fullText = "";
 
-  // 逐行解析流式响应。
+  // 逐行解析流式响应。SSE 可能一次返回半行，因此必须依赖 buffer 拼接残片。
   while (true) {
     const { value, done } = await reader.read();
     if (done) {
@@ -193,6 +194,7 @@ async function streamByEndpoint(
         const json = JSON.parse(data);
         const delta = json?.choices?.[0]?.delta?.content || "";
         if (delta) {
+          // UI 层消费的是“当前完整文本”，这样可以避免每层都重复做字符串拼接。
           fullText += delta; // 累计文本。
           onDelta(fullText); // 回调更新 UI，传递当前完整文本。
         }
@@ -233,7 +235,8 @@ export async function streamChatCompletion(
       typedError.endpoint = typedError.endpoint || endpoint; // 确保错误对象包含触发错误的端点信息。
       lastError = typedError; // 记录最后一次错误。
 
-      // 尝试下一个端点，但忽略非传输层错误。
+      // 只对“网络不可达 / fetch 失败”这类传输层错误做切换，
+      // 业务错误（401、429、400）应该立刻暴露给上层，不然会掩盖真实问题。
       const hasNext = index < endpoints.length - 1;
       if (hasNext && isTransportError(error)) {
         continue;

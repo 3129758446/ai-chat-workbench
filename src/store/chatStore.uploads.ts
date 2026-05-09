@@ -21,6 +21,7 @@ export function createUploadActions(
   | "clearUploadingFiles"
 > {
   return {
+    // 添加上传中的图片预览到会话记录。
     addUploadingImages: (id, images) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -38,6 +39,7 @@ export function createUploadActions(
         };
       }),
 
+      // 删除上传中的图片预览。
     removeUploadingImage: (id, imageId) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -66,6 +68,7 @@ export function createUploadActions(
         };
       }),
 
+      // 清空上传中的图片预览。
     clearUploadingImages: (id) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -89,6 +92,7 @@ export function createUploadActions(
         };
       }),
 
+      // 添加上传中的文本文件草稿到会话记录。
     addUploadingFiles: (id, files) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -106,6 +110,7 @@ export function createUploadActions(
         };
       }),
 
+      // 更新上传中的文本文件草稿。
     updateUploadingFile: (id, fileId, patch) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -126,6 +131,7 @@ export function createUploadActions(
         };
       }),
 
+      // 删除上传中的文本文件草稿。
     removeUploadingFile: (id, fileId) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -145,6 +151,7 @@ export function createUploadActions(
         };
       }),
 
+      // 清空上传中的文本文件草稿。
     clearUploadingFiles: (id) =>
       set((state) => {
         const conversation = state.conversations[id];

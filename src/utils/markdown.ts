@@ -25,10 +25,7 @@ const FORBIDDEN_MARKDOWN_TAGS = [
   "textarea",
 ];
 
-/**
- * 内部辅助：确保渲染引擎已加载
- * 演示“异步化加载”的核心逻辑
- */
+// 加载 Markdown 渲染引擎，确保只加载一次。
 async function loadRenderer() {
   if (markedInstance && hljsInstance) {
     return { marked: markedInstance, hljs: hljsInstance };
@@ -57,9 +54,9 @@ async function loadRenderer() {
  * 演示：调用方需要使用 await 或 .then()
  */
 export async function renderMarkdownToHtml(markdown: string): Promise<string> {
-  const { marked } = await loadRenderer();
-  const rawHtml = await marked.parse(markdown || "");
-  return DOMPurify.sanitize(String(rawHtml), {
+  const { marked } = await loadRenderer(); // 加载渲染引擎
+  const rawHtml = await marked.parse(markdown || ""); // 解析 Markdown
+  return DOMPurify.sanitize(String(rawHtml), { // 过滤危险标签
     FORBID_TAGS: FORBIDDEN_MARKDOWN_TAGS,
   });
 }

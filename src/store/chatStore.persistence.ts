@@ -16,6 +16,7 @@ import {
 } from "./chatStore.helpers";
 import type { ChatState, PersistedChatState } from "./chatStore.types";
 
+// 裁剪 ChatState 为可持久化的格式。
 function partializeChatState(state: ChatState): PersistedChatState {
   return {
     theme: state.theme,
@@ -27,20 +28,21 @@ function partializeChatState(state: ChatState): PersistedChatState {
       Object.entries(state.conversations).map(([id, conversation]) => [
         id,
         {
-          id: conversation.id,
-          title: conversation.title,
-          createdAt: conversation.createdAt,
-          updatedAt: conversation.updatedAt,
-          lastMessagePreview: conversation.lastMessagePreview,
-          draftInput: conversation.draftInput,
-          messages: conversation.messages,
-          chatHistory: conversation.chatHistory,
+          id: conversation.id, // 会话 ID
+          title: conversation.title,  // 标题
+          createdAt: conversation.createdAt, // 创建时间
+          updatedAt: conversation.updatedAt, // 最新更新时间
+          lastMessagePreview: conversation.lastMessagePreview, // 最新消息预览
+          draftInput: conversation.draftInput, // 输入框草稿
+          messages: conversation.messages, // 会话消息列表
+          chatHistory: conversation.chatHistory, // 会话历史记录
         } satisfies ConversationDraft,
       ]),
     ),
   };
 }
 
+// 合并持久化状态与当前运行态状态。
 function mergePersistedChatState(
   persisted: unknown,
   current: ChatState,
@@ -79,8 +81,8 @@ export function createChatPersistOptions(): PersistOptions<
   return {
     name: CHAT_STORE_STORAGE,
     // Zustand 默认走 JSON 序列化，这里显式指定 localStorage 存储实现。
-    storage: createJSONStorage(() => localStorage),
-    partialize: partializeChatState,
-    merge: mergePersistedChatState,
+    storage: createJSONStorage(() => localStorage), // 本地存储介质为 localStorage
+    partialize: partializeChatState, // 裁剪 ChatState 为可持久化的格式
+    merge: mergePersistedChatState, // 合并持久化状态与当前运行态状态
   };
 }

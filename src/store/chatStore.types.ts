@@ -18,26 +18,29 @@ import type {
   UploadingTextFile,
 } from "../types/chat";
 
+// 持久化状态，包含所有会话草稿、当前会话 ID、有序会话 ID 列表。
 export interface PersistedChatState {
   theme: ThemeMode;
   modelProvider: ModelProviderMode;
-  currentConversationId: string | null;
-  orderedConversationIds: string[];
+  currentConversationId: string | null; // 当前会话 ID，默认值为 null。
+  orderedConversationIds: string[]; // 有序会话 ID 列表，默认值为空数组。
   // 持久化层只保存可序列化的会话草稿，不保存 File、AbortController 等运行态对象。
-  conversations: Record<string, ConversationDraft>;
+  conversations: Record<string, ConversationDraft>; // 会话草稿，默认值为空对象。
 }
 
+// 运行态状态，包含所有会话记录、当前会话 ID、有序会话 ID 列表、上传草稿、流式状态等。
 export interface ChatState {
-  theme: ThemeMode;
-  modelProvider: ModelProviderMode;
-  currentConversationId: string | null;
-  orderedConversationIds: string[];
-  conversations: Record<string, Conversation>;
-  abortControllers: Record<string, AbortController | null>;
+  theme: ThemeMode; // 主题模式，默认值为 "light"。
+  modelProvider: ModelProviderMode; // 模型提供程序，默认值为 "deepseek"。
+  currentConversationId: string | null; // 当前会话 ID，默认值为 null。
+  orderedConversationIds: string[];  // 有序会话 ID 列表，默认值为空数组。
+  conversations: Record<string, Conversation>; // 会话记录，默认值为空对象。
+  abortControllers: Record<string, AbortController | null>; // 流式请求控制器，默认默认值为空对象。
 
-  setTheme: (theme: ThemeMode) => void;
-  setModelProvider: (provider: ModelProviderMode) => void;
+  setTheme: (theme: ThemeMode) => void; // 设置主题模式。
+  setModelProvider: (provider: ModelProviderMode) => void; // 设置模型提供程序。
 
+  // 会话管理动作。
   createConversation: (options?: { title?: string }) => string;
   ensureConversation: (id: string) => void;
   switchConversation: (id: string) => void;
@@ -45,12 +48,14 @@ export interface ChatState {
   deleteConversation: (id: string) => void;
   clearConversation: (id: string) => void;
 
+  // 会话内容动作。
   setDraftInput: (id: string, value: string) => void;
   addUiMessage: (id: string, message: UiMessage) => void;
   updateUiMessageText: (id: string, messageId: string, text: string) => void;
   pushHistory: (id: string, message: ApiMessage) => void;
   removeHistoryMessage: (id: string, target: ApiMessage) => void;
 
+  // 上传动作。
   addUploadingImages: (id: string, images: UploadingImage[]) => void;
   removeUploadingImage: (id: string, imageId: string) => void;
   clearUploadingImages: (id: string) => void;
@@ -63,6 +68,7 @@ export interface ChatState {
   removeUploadingFile: (id: string, fileId: string) => void;
   clearUploadingFiles: (id: string) => void;
 
+  // 运行态动作。
   setStreaming: (id: string, value: boolean) => void;
   setAbortController: (id: string, controller: AbortController | null) => void;
 }

@@ -20,6 +20,7 @@ export function createMessageActions(
   | "removeHistoryMessage"
 > {
   return {
+    // 更新会话草稿输入，用于用户实时输入。
     setDraftInput: (id, value) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -37,6 +38,7 @@ export function createMessageActions(
         };
       }),
 
+      // 添加 UI 消息到会话记录。
     addUiMessage: (id, message) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -56,6 +58,7 @@ export function createMessageActions(
         };
       }),
 
+      // 更新 UI 消息文本，用于用户编辑后确认。
     updateUiMessageText: (id, messageId, text) =>
       set((state) => {
         const conversation = state.conversations[id];
@@ -76,13 +79,16 @@ export function createMessageActions(
         };
       }),
 
+      // 添加 API 历史消息到会话记录。
     pushHistory: (id, message) =>
       set((state) => {
+        // 确保会话存在，避免空指针异常。
         const conversation = state.conversations[id];
         if (!conversation) {
           return state;
         }
 
+        // 更新会话历史记录，保持最新消息在顶部。
         const nextConversation = {
           ...conversation,
           // chatHistory 专门服务于模型请求，和 UI 消息列表独立维护。
@@ -107,6 +113,7 @@ export function createMessageActions(
         };
       }),
 
+      // 删除 API 历史消息。
     removeHistoryMessage: (id, target) =>
       set((state) => {
         const conversation = state.conversations[id];

@@ -29,12 +29,15 @@ import {
 } from "../utils/helpers";
 import { buildUserMessageContent } from "../utils/messageContent";
 
+// 创建打字机更新器
+// 用于在 UI 上实时显示流式返回的内容，避免卡顿。
 function createTypewriterUpdater(onText: (text: string) => void) {
-  let shownText = "";
-  let targetText = "";
-  let timerId: number | null = null;
+  let shownText = ""; // 当前显示的文本，用于对比更新，代表 UI 当前显示到哪
+  let targetText = ""; // 目标文本，用于对比更新，代表服务端已经返回到哪
+  let timerId: number | null = null; // 定时器 ID，用于控制打字机动画
   const waiters: Array<() => void> = [];
 
+  // 确保所有打字机更新完成，再通知等待者
   const resolveWaiters = () => {
     if (shownText !== targetText) {
       return;
@@ -44,6 +47,7 @@ function createTypewriterUpdater(onText: (text: string) => void) {
     }
   };
 
+  // 创建停止打字机更新器，停止定时器并通知所有等待者完成
   const stopTimer = () => {
     if (timerId === null) {
       return;
@@ -52,6 +56,7 @@ function createTypewriterUpdater(onText: (text: string) => void) {
     timerId = null;
   };
 
+  // 创建打字机更新器，负责按需更新 UI，并确保打字机动画完成。
   const step = () => {
     const backlog = targetText.length - shownText.length;
     if (backlog <= 0) {
@@ -61,7 +66,7 @@ function createTypewriterUpdater(onText: (text: string) => void) {
     }
 
     // 服务端可能一次吐出大块内容，这里按 backlog 自适应追赶，既顺滑又不拖太久。
-    const chunkSize = Math.max(1, Math.min(16, Math.ceil(backlog / 28)));
+    const chunkSize = Math.max(1, Math.min(16, Math.ceil(backlog / 28))); // 计算每次更新的字符数，确保在 1-16 个字符之间
     shownText = targetText.slice(0, shownText.length + chunkSize);
     onText(shownText);
   };
@@ -75,6 +80,7 @@ function createTypewriterUpdater(onText: (text: string) => void) {
 
   return {
     push(nextText: string) {
+      // 如果服务端返回被重置或变短，直接同步到最新内容，避免 UI 残留旧字符。
       if (nextText.length < targetText.length) {
         shownText = nextText;
         onText(shownText);
@@ -83,6 +89,7 @@ function createTypewriterUpdater(onText: (text: string) => void) {
       ensureTimer();
     },
     flush(finalText: string) {
+      // 请求结束时不立刻写死最终文本，而是等打字机动画把剩余字符补完。
       targetText = finalText;
       ensureTimer();
       return new Promise<void>((resolve) => {
@@ -130,25 +137,25 @@ interface UseSendMessageParams {
 }
 
 export function useSendMessage({
-  mode,
-  conversationId,
-  input,
-  modelProvider,
-  isStreaming,
-  uploadingImages,
-  uploadingFiles,
-  navigate,
-  clearUploadingImages,
-  clearUploadingFiles,
-  setInput,
-  addUiMessage,
-  updateUiMessageText,
-  pushHistory,
-  removeHistoryMessage,
-  setAbortController,
-  setStreaming,
-  ensureConversation,
-  createConversation,
+  mode, // 当前页面模式
+  conversationId, // 当前会话 ID
+  input, // 输入框当前文本
+  modelProvider, // 当前选中的模型模式
+  isStreaming, // 当前是否在流式响应中，用于防并发发送
+  uploadingImages, // 待发送图片列表
+  uploadingFiles, // 待发送文本文件列表
+  navigate, // 路由 navigate
+  clearUploadingImages, // 清除待发送图片列表
+  clearUploadingFiles, // 清除待发送文本文件列表
+  setInput, // 设置输入框文本
+  addUiMessage, // 添加 UI 消息
+  updateUiMessageText, // 更新 UI 消息文本
+  pushHistory, // 添加历史消息
+  removeHistoryMessage, // 移除历史消息
+  setAbortController, // 设置 AbortController
+  setStreaming, // 设置流式响应状态
+  ensureConversation, // 确保会话存在
+  createConversation, // 创建会话
 }: UseSendMessageParams) {
   // 当本地缺少 Key 时即时弹窗录入，降低首次使用门槛。
   const promptForApiKey = (provider: ChatProvider): string => {
@@ -171,8 +178,9 @@ export function useSendMessage({
     async (cardPrompt?: string) => {
       // 1. 首页只负责创建会话并跳转，不直接发请求。
       if (mode === "home") {
+        // 1.1 处理卡片提示和输入框文本的合并。
         const prompt = (
-          typeof cardPrompt === "string" ? cardPrompt : input
+          typeof cardPrompt === "string" ? cardPrompt : input  // 优先使用卡片提示，否则使用输入框文本
         ).trim();
 
         if (!prompt) {
@@ -183,7 +191,7 @@ export function useSendMessage({
 
         const nextId = createConversation();
         navigate(`/chat/${nextId}`, {
-          state: { draftPrompt: prompt, shouldAutoSend: true },
+          state: { draftPrompt: prompt, shouldAutoSend: true }, // 创建会话时自动发送请求
         });
         return;
       }
@@ -197,7 +205,7 @@ export function useSendMessage({
       }
 
       // 3. 检查是否有内容，文本和图片都为空时不触发请求。
-      const rawText = typeof cardPrompt === "string" ? cardPrompt : input;
+      const rawText = typeof cardPrompt === "string" ? cardPrompt : input; // 优先使用卡片提示，否则使用输入框文本
       const text = rawText.trim();
       const hasImages = uploadingImages.length > 0;
       const readyFiles = uploadingFiles.filter(
@@ -293,7 +301,7 @@ export function useSendMessage({
       // 8. 把用户消息加入模型历史。
       pushHistory(targetConversationId, currentUserMessage);
       // 9. 清空输入框和待发送图片。
-      setInput(targetConversationId, "");
+      setInput(targetConversationId, ""); // 清空输入框文本
       clearUploadingImages(targetConversationId);
       clearUploadingFiles(targetConversationId);
 
@@ -306,24 +314,25 @@ export function useSendMessage({
       });
 
       const controller = new AbortController(); // 创建控制器实例，用于可能的请求中断操作
-      setAbortController(targetConversationId, controller);
+      setAbortController(targetConversationId, controller); // 存储控制器实例，用于后续取消请求
       setStreaming(targetConversationId, true);
       const typewriter = createTypewriterUpdater((nextText) => {
+        // 打字机更新器只负责控制“展示速度”，真正的完整内容仍由服务层持续推送。
         updateUiMessageText(targetConversationId, assistantId, nextText);
       });
 
       try {
         // 11. 发起流式请求（核心中的核心）。
         const currentHistory =
-          useChatStore.getState().conversations[targetConversationId]
+          useChatStore.getState().conversations[targetConversationId] // 获取当前会话历史
             ?.chatHistory || [];
 
         const finalText = await streamChatCompletion(
           provider,
           apiKey,
-          currentHistory,
-          controller.signal,
-          (delta) => typewriter.push(delta),
+          currentHistory, // 传递当前会话历史，保持上下文连续
+          controller.signal, // 传递控制器信号，用于可能的请求中断操作
+          (delta) => typewriter.push(delta), // 处理服务端返回的增量内容
         );
         await typewriter.flush(finalText);
 
@@ -386,12 +395,12 @@ export function useSendMessage({
         }
 
         if (shouldReplace) {
-          updateUiMessageText(targetConversationId, assistantId, message);
+          updateUiMessageText(targetConversationId, assistantId, message); 
         }
       } finally {
         // 无论成功失败都恢复按钮状态。
-        setAbortController(targetConversationId, null);
-        setStreaming(targetConversationId, false);
+        setAbortController(targetConversationId, null); // 清除控制器实例，避免后续请求重复取消
+        setStreaming(targetConversationId, false); // 重置流式状态，准备下一次请求
       }
     },
     [

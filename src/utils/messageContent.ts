@@ -25,7 +25,7 @@ export async function buildUserMessageContent(
   images: UploadingImage[],
   files: UploadingTextFile[] = [],
 ): Promise<string | MessagePart[]> {
-  const textWithFiles = buildFileQuestionText(text, files);
+  const textWithFiles = buildFileQuestionText(text, files); // 构建包含文件的文本
 
   // 无图片时直接返回文本，保持请求结构最简单。
   if (!images.length) {
