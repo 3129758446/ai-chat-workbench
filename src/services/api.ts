@@ -160,14 +160,14 @@ async function streamByEndpoint(
   }
 
   // 4. 流式响应：逐块读取并解析 SSE 格式，增量回调文本更新。
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-  let fullText = "";
+  const reader = response.body.getReader(); // 创建响应体读取器。
+  const decoder = new TextDecoder("utf-8"); // 创建文本解码器，用于将字节流转换为字符串。
+  let buffer = ""; // 存储残片数据。
+  let fullText = ""; // 存储完整文本。
 
   // 逐行解析流式响应。SSE 可能一次返回半行，因此必须依赖 buffer 拼接残片。
   while (true) {
-    const { value, done } = await reader.read();
+    const { value, done } = await reader.read(); // 读取响应体的下一块数据。
     if (done) {
       break;
     }

@@ -154,7 +154,7 @@ function App({ mode = "chat" }: AppProps) {
   // 停止流式响应
   const stopStreaming = () => {
     if (!routeConversationId || !abortController) return;
-    abortController.abort();
+    abortController.abort();  //  取消当前会话的流式响应
     setAbortController(routeConversationId, null);
   };
 
@@ -220,7 +220,7 @@ function App({ mode = "chat" }: AppProps) {
     if (mode !== "chat" || !routeConversationId || isStreaming) {
       return;
     }
-    const state = location.state as RouteState | null; // 从路由状态中提取透传参数
+    const state = location.state as RouteState | null; // 获取路由状态
     const shouldAutoSend = Boolean(state?.shouldAutoSend); // 是否自动发送消息
     const draftPrompt = state?.draftPrompt?.trim() || ""; // 草稿消息
     if (!shouldAutoSend && !draftPrompt) { // 如果不自动发送消息且没有草稿消息
@@ -228,6 +228,7 @@ function App({ mode = "chat" }: AppProps) {
     }
 
     // 去重处理
+    // location.key 是路由路径，用于区分不同的路由参数
     const token = `${location.key}:${routeConversationId}:${draftPrompt}:${shouldAutoSend ? 1 : 0}`;
     if (routePromptTokenRef.current === token) { // 如果当前参数与上一次相同，则不处理
       return;

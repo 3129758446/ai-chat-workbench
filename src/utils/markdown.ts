@@ -114,11 +114,11 @@ function getCodeLanguage(codeEl: HTMLElement): string {
  */
 async function highlightCodeElement(codeEl: HTMLElement): Promise<void> {
   if (codeEl.dataset.highlighted === "true") return;
-
+ 
   const { hljs } = await loadRenderer();
   const text = codeEl.textContent || "";
   const language = getCodeLanguage(codeEl);
-
+  
   try {
     const highlighted =
       language && hljs.getLanguage(language)
