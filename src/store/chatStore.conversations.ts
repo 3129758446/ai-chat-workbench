@@ -35,6 +35,7 @@ export function createConversationActions(
           ...state.conversations,
           [conversation.id]: conversation,
         },
+        // 新会话尚无生成请求，预设一个空占位，便于后续状态更新和请求中断逻辑统一处理。
         abortControllers: {
           ...state.abortControllers,
           [conversation.id]: null,

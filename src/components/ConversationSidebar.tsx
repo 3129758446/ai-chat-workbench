@@ -8,30 +8,32 @@
 
 import { useState } from "react";
 
+// 会话摘要
 interface ConversationItem {
-  id: string;
-  title: string;
-  updatedAt: number;
-  lastMessagePreview: string;
-  isStreaming: boolean;
+  id: string; // 会话ID
+  title: string; // 会话标题
+  updatedAt: number; // 时间戳，单位毫秒
+  lastMessagePreview: string; // 最近消息预览文本
+  isStreaming: boolean; // 是否处于流式响应状态
 }
 
+// 侧栏组件属性
 interface ConversationSidebarProps {
-  conversations: ConversationItem[];
-  currentConversationId: string | null;
-  onCreateConversation: () => void;
-  onSelectConversation: (conversationId: string) => void;
-  onRenameConversation: (conversationId: string, title: string) => void;
-  onDeleteConversation: (conversationId: string) => void;
+  conversations: ConversationItem[]; // 会话列表
+  currentConversationId: string | null; // 当前选中会话ID
+  onCreateConversation: () => void; // 新建会话回调
+  onSelectConversation: (conversationId: string) => void; // 选择会话回调
+  onRenameConversation: (conversationId: string, title: string) => void; // 重命名会话回调
+  onDeleteConversation: (conversationId: string) => void; // 删除会话回调
 }
-
+// 会话侧栏组件，展示会话列表并提供操作入口
 export function ConversationSidebar({
-  conversations,
-  currentConversationId,
-  onCreateConversation,
-  onSelectConversation,
-  onRenameConversation,
-  onDeleteConversation,
+  conversations, // 会话列表
+  currentConversationId, // 当前选中会话ID
+  onCreateConversation, // 新建会话回调
+  onSelectConversation, // 选择会话回调
+  onRenameConversation,  // 重命名会话回调
+  onDeleteConversation,  // 删除会话回调
 }: ConversationSidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");

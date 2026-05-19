@@ -26,18 +26,21 @@ export interface TextPart {
 
 export type MessagePart = ImagePart | TextPart;
 
+// API 消息结构，直接对应模型请求和响应的格式。
 export interface ApiMessage {
   role: Role;
   content: string | MessagePart[];
 }
 
+// UI 消息结构，包含一个唯一 ID 以便于 React 列表渲染和消息更新。
 export interface UiMessage {
   id: string;
   role: Role;
-  text: string;
-  content?: MessagePart[];
+  text: string; // 纯文本消息，用于展示。
+  content?: MessagePart[]; // 可选的消息内容片段，支持文本和图片。
 }
 
+// 上传中的图片资源。
 export interface UploadingImage {
   id: string;
   file: File;
@@ -63,17 +66,17 @@ export interface UploadingTextFile {
 
 // 会话实体，包含所有会话相关状态。
 export interface Conversation {
-  id: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-  lastMessagePreview: string;
-  draftInput: string;
-  messages: UiMessage[];
-  chatHistory: ApiMessage[];
-  uploadingImages: UploadingImage[];
-  uploadingFiles: UploadingTextFile[];
-  isStreaming: boolean;
+  id: string; // 会话 ID，默认值为随机字符串。
+  title: string; // 会话标题，默认值为 "New Conversation"。
+  createdAt: number; // 创建时间，用于排序。
+  updatedAt: number; // 最后一次更新时间，用于排序。
+  lastMessagePreview: string; // 最后一条消息预览，默认值为空字符串，
+  draftInput: string; // 草稿输入，用于保存用户输入的文本。
+  messages: UiMessage[]; // 聊天记录，包含所有消息。
+  chatHistory: ApiMessage[]; // 聊天历史记录，包含所有 API 消息。
+  uploadingImages: UploadingImage[]; // 上传中的图片资源。
+  uploadingFiles: UploadingTextFile[]; // 上传中的文本文件资源。
+  isStreaming: boolean; // 是否处于流式响应状态。
 }
 
 // 会话草稿，包含基本属性，不包含运行态对象。

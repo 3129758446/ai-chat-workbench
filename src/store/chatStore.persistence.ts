@@ -47,7 +47,7 @@ function mergePersistedChatState(
   persisted: unknown,
   current: ChatState,
 ): ChatState {
-  const persistedState = persisted as PersistedChatState | undefined;
+  const persistedState = persisted as PersistedChatState | undefined; // 持久化状态可能不存在或格式不对，先断言为可能的类型。
   if (!persistedState) {
     return current;
   }
@@ -56,7 +56,7 @@ function mergePersistedChatState(
     Object.entries(persistedState.conversations || {}).map(([id, draft]) => [
       // 统一补齐默认字段，避免持久化数据缺少新字段时直接恢复出错。
       id,
-      normalizePersistedConversation(draft, id),
+      normalizePersistedConversation(draft, id), // 把持久化的 ConversationDraft 转换回完整的 Conversation 结构。
     ]),
   );
 
