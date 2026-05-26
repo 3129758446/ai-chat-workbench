@@ -179,9 +179,8 @@ export function useSendMessage({
       // 1. 首页只负责创建会话并跳转，不直接发请求。
       if (mode === "home") {
         // 1.1 处理卡片提示和输入框文本的合并。
-        const prompt = (
-          typeof cardPrompt === "string" ? cardPrompt : input  // 优先使用卡片提示，否则使用输入框文本
-        ).trim();
+        const prompt = (typeof cardPrompt === "string" ? cardPrompt : input) // 优先使用卡片提示，否则使用输入框文本
+          .trim();
 
         if (!prompt) {
           const nextId = createConversation();
@@ -233,12 +232,8 @@ export function useSendMessage({
       }
 
       if (provider === "deepseek" && hasImages) {
-        addUiMessage(targetConversationId, {
-          id: uid("assistant"),
-          role: "assistant",
-          text: "DeepSeek 当前未接入图片识别，请切换到“灵犀 / Qwen”或移除图片后再发送。",
-        });
-        return;
+        // 如果当前是 deepseek 且上传了图片，将强制切换 provider 到灵犀，以便使用视觉模型
+        provider = "lingxi";
       }
 
       // 5. 检查当前 provider 对应的 API Key。
@@ -323,9 +318,25 @@ export function useSendMessage({
 
       try {
         // 11. 发起流式请求（核心中的核心）。
-        const currentHistory =
+        let currentHistory =
           useChatStore.getState().conversations[targetConversationId] // 获取当前会话历史
             ?.chatHistory || [];
+
+        // 如果我们最终选定的是文本模型，但是历史中包含了图片（可能之前用的视觉模型），
+        // 那么需要把历史消息中的图片结构剥离掉，只保留文本，防止大模型接口解析失败 (HTTP 400)。
+        if (provider === "deepseek" && !hasImages) {
+          currentHistory = currentHistory.map((msg) => {
+            if (Array.isArray(msg.content)) {
+              // 将数组内容转为纯文本字符串（仅保留文本部分）
+              const textContent = msg.content
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("\n");
+              return { ...msg, content: textContent };
+            }
+            return msg;
+          });
+        }
 
         const finalText = await streamChatCompletion(
           provider,
@@ -395,7 +406,7 @@ export function useSendMessage({
         }
 
         if (shouldReplace) {
-          updateUiMessageText(targetConversationId, assistantId, message); 
+          updateUiMessageText(targetConversationId, assistantId, message);
         }
       } finally {
         // 无论成功失败都恢复按钮状态。

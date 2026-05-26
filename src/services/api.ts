@@ -39,11 +39,16 @@ export function resolveModelByMessages(
   provider: ChatProvider,
   messages: ApiMessage[],
 ): string {
+  // 如果当前对话（包括历史）中包含图片，始终走视觉模型，无论选的是哪个 provider
+  if (hasImageInMessages(messages)) {
+    return VISION_MODEL_NAME;
+  }
+
   if (provider === "deepseek") {
     return DEEPSEEK_MODEL_NAME;
   }
 
-  return hasImageInMessages(messages) ? VISION_MODEL_NAME : MODEL_NAME;
+  return MODEL_NAME;
 }
 
 // 组装灵犀端点列表：自定义端点优先，默认端点作为回退。
