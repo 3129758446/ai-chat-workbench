@@ -29,6 +29,28 @@ import {
 } from "../utils/helpers";
 import { buildUserMessageContent } from "../utils/messageContent";
 
+const TYPEWRITER_MAX_CHUNK = 16;
+const TYPEWRITER_TAIL_START = 48;
+
+function resolveTypewriterChunkSize(backlog: number): number {
+  if (backlog <= 0) {
+    return 0;
+  }
+
+  // 尾部不再逐字挪动，而是随着剩余字符变少逐步提高追赶速度。
+  if (backlog <= 8) {
+    return backlog;
+  }
+  if (backlog <= 16) {
+    return Math.max(4, Math.ceil(backlog / 2));
+  }
+  if (backlog <= TYPEWRITER_TAIL_START) {
+    return Math.max(3, Math.ceil(backlog / 3));
+  }
+
+  return Math.max(1, Math.min(TYPEWRITER_MAX_CHUNK, Math.ceil(backlog / 28)));
+}
+
 // 创建打字机更新器
 // 用于在 UI 上实时显示流式返回的内容，避免卡顿。
 function createTypewriterUpdater(onText: (text: string) => void) {
@@ -65,8 +87,8 @@ function createTypewriterUpdater(onText: (text: string) => void) {
       return;
     }
 
-    // 服务端可能一次吐出大块内容，这里按 backlog 自适应追赶，既顺滑又不拖太久。
-    const chunkSize = Math.max(1, Math.min(16, Math.ceil(backlog / 28))); // 计算每次更新的字符数，确保在 1-16 个字符之间
+    // 服务端可能一次吐出大块内容；收尾阶段改为平滑加速，减少尾巴拖沓感。
+    const chunkSize = resolveTypewriterChunkSize(backlog);
     shownText = targetText.slice(0, shownText.length + chunkSize);
     onText(shownText);
   };

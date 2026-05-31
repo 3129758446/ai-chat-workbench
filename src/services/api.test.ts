@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { 
+  CHAT_SYSTEM_PROMPT,
   hasImageInMessages, 
   resolveModelByMessages, 
   getLingxiApiEndpoints, 
@@ -24,6 +25,11 @@ import type { ApiMessage } from "../types/chat";
  */
 
 describe("api.ts 业务逻辑测试", () => {
+  it("系统提示应强调严格遵循用户提示词和格式要求", () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain("必须优先遵循用户最新提示词中的任务要求");
+    expect(CHAT_SYSTEM_PROMPT).toContain("不得擅自改写、合并、重排或省略");
+    expect(CHAT_SYSTEM_PROMPT).toContain("如果用户要求分别解析不同材料，必须分别解析");
+  });
   
   describe("hasImageInMessages", () => {
     it("检测到图片片段应返回 true", () => {

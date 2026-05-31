@@ -24,6 +24,9 @@ export interface ApiError extends Error {
   endpoint?: string;
 }
 
+export const CHAT_SYSTEM_PROMPT =
+  "你是一个专业、友好的 AI 助手。必须优先遵循用户最新提示词中的任务要求、分析顺序、标题和输出格式。在不违反安全规则的前提下，不得擅自改写、合并、重排或省略用户明确指定的段落结构与标题；如果用户要求分别解析不同材料，必须分别解析后再给出关系判断。若信息不足，直接说明不足，不要补充用户未要求的扩展结论。输出尽量结构化，优先使用 Markdown。";
+
 // 检查消息中是否存在图片片段，用于决定模型类型。
 export function hasImageInMessages(messages: ApiMessage[]): boolean {
   return messages.some(
@@ -130,8 +133,7 @@ async function streamByEndpoint(
         // 构建请求体，包含系统提示和用户消息。
         {
           role: "system",
-          content:
-            "你是一个专业、友好的 AI 助手。输出尽量结构化，优先使用 Markdown。",
+          content: CHAT_SYSTEM_PROMPT,
         },
         ...messages,
       ],
