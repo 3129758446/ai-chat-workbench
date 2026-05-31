@@ -20,7 +20,9 @@ import { scrollToBottom } from "../utils/helpers";
 interface UseAppEffectsParams {
   theme: ThemeMode;
   mode: "home" | "chat";
+  activeConversationId: string | null;
   messagesCount: number;
+  isStreaming: boolean;
   input: string;
   messageInputRef: RefObject<HTMLTextAreaElement | null>;
   messages: UiMessage[];
@@ -31,7 +33,9 @@ interface UseAppEffectsParams {
 export function useAppEffects({
   theme,
   mode,
+  activeConversationId,
   messagesCount,
+  isStreaming,
   input,
   messageInputRef,
   messages,
@@ -75,17 +79,73 @@ export function useAppEffects({
     inputEl.style.height = `${Math.min(inputEl.scrollHeight, 160)}px`;
   }, [input, messageInputRef]);
 
+  // 切换历史会话后，等待内容渲染稳定再补一次滚动，避免 Markdown 异步渲染后底部偏移。
+  useEffect(() => {
+    if (mode !== "chat" || !activeConversationId) {
+      return;
+    }
+
+    const panel = document.querySelector(".chat-panel");
+    if (!panel) {
+      scrollToBottom("auto");
+      return;
+    }
+
+    let settleTimerId: number | null = null;
+    const scrollAfterRender = () => {
+      if (settleTimerId !== null) {
+        window.clearTimeout(settleTimerId);
+      }
+      settleTimerId = window.setTimeout(() => {
+        scrollToBottom("auto");
+      }, 40);
+    };
+
+    scrollAfterRender();
+
+    const observer = new MutationObserver(() => {
+      scrollAfterRender();
+    });
+
+    observer.observe(panel, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    const stopObserveTimerId = window.setTimeout(() => {
+      observer.disconnect();
+      if (settleTimerId !== null) {
+        window.clearTimeout(settleTimerId);
+      }
+    }, 800);
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(stopObserveTimerId);
+      if (settleTimerId !== null) {
+        window.clearTimeout(settleTimerId);
+      }
+    };
+  }, [mode, activeConversationId]);
+
   // 消息或上传预览变化后自动滚动到底，保证最新内容可见。
   useEffect(() => {
+    if (isStreaming) {
+      scrollToBottom("auto");
+      return;
+    }
     scrollToBottom();
-  }, [messages, uploadingImages, uploadingFiles]);
+  }, [messages, uploadingImages, uploadingFiles, isStreaming]);
 
   // 组件卸载时兜底清理对象 URL，防止上传预览造成内存泄漏。
   useEffect(() => {
     return () => {
       const { conversations } = useChatStore.getState();
       Object.values(conversations).forEach((conversation) => {
-        conversation.uploadingImages.forEach((item) => URL.revokeObjectURL(item.url));
+        conversation.uploadingImages.forEach((item) =>
+          URL.revokeObjectURL(item.url),
+        );
       });
     };
   }, []);

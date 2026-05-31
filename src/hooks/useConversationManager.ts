@@ -1,19 +1,18 @@
- import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useChatStore } from "../store";
 
 /**
  * Hook 功能：会话生命周期管理中心
  * 设计思路：
  * 1. 封装路由跳转与 Store 动作的联动，使组件层只需调用简单的方法。
- * 2. 处理“删除当前会话”后的回退逻辑（跳转到首页或自动切换到下一个会话）。
+ * 2. 处理“删除当前会话”后的回退逻辑，统一回到首页，避免自动切到其他会话造成上下文跳变。
  */
 export function useConversationManager(routeConversationId: string | null) {
   const navigate = useNavigate();
   const {
-    createConversation, // 创建会话
     deleteConversation, // 删除会话
     ensureConversation, // 确保会话存在
-    switchConversation,  // 切换会话
+    switchConversation, // 切换会话
   } = useChatStore();
 
   /**
@@ -43,7 +42,7 @@ export function useConversationManager(routeConversationId: string | null) {
 
     // 1. 如果删除的是当前正在生成的会话，先停止流式
     if (isCurrent && stopStreaming) {
-      stopStreaming(); 
+      stopStreaming();
     }
 
     // 2. 执行 Store 中的删除动作
@@ -52,16 +51,8 @@ export function useConversationManager(routeConversationId: string | null) {
     // 3. 路由重定向逻辑
     if (!isCurrent) return;
 
-    const remainingIds = useChatStore.getState().orderedConversationIds; // 获取剩余会话 IDs
-    
-    if (remainingIds.length) {
-      // 如果还有剩余会话，跳转到第一个
-      navigate(`/chat/${remainingIds[0]}`, { replace: true });
-    } else {
-      // 如果全删了，创建一个新会话并跳转到首页
-      const nextId = createConversation();
-      navigate(`/chat/${nextId}`, { replace: true });
-    }
+    // 删除当前会话后统一回首页，避免自动切换到其他会话影响用户预期。
+    navigate("/", { replace: true });
   };
 
   return {

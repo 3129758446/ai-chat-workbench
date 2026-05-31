@@ -17,8 +17,8 @@ import { ConversationSidebar } from "./components/ConversationSidebar";
 import { WelcomeSection } from "./components/WelcomeSection";
 
 // Hooks 引入
-import { useAppEffects } from "./hooks/useAppEffects"; // 应用级状态管理 
-import { useSendMessage } from "./hooks/useSendMessage";   // 消息发送管理
+import { useAppEffects } from "./hooks/useAppEffects"; // 应用级状态管理
+import { useSendMessage } from "./hooks/useSendMessage"; // 消息发送管理
 import { useConversationManager } from "./hooks/useConversationManager"; // 会话生命周期管理中心
 import { useFileHandlers } from "./hooks/useFileHandlers"; // 文件上传管理
 import { useChatStore } from "./store"; // 聊天状态管理
@@ -43,7 +43,8 @@ function getConversationSummaries(
   return orderedIds
     .map((id) => conversations[id]) // 从映射中提取会话对象
     .filter(Boolean) // 过滤掉 undefined 值
-    .map((conversation) => ({ // 提取会话摘要信息
+    .map((conversation) => ({
+      // 提取会话摘要信息
       id: conversation.id,
       title: conversation.title,
       updatedAt: conversation.updatedAt,
@@ -75,7 +76,7 @@ function App({ mode = "chat" }: AppProps) {
     currentConversationId, // 当前会话 ID
     orderedConversationIds, // 会话 ID 有序列表
     conversations, // 会话对象映射
-    abortControllers, // 会话取消控制器映射
+    // abortControllers, // 会话取消控制器映射
     setTheme, // 当前主题状态
     setModelProvider, // 当前模型提供者状态
     createConversation, // 创建会话函数
@@ -102,10 +103,10 @@ function App({ mode = "chat" }: AppProps) {
     handleCreateConversation: handleCreateConversationBase,
     handleSelectConversation,
     handleDeleteConversation: handleDeleteConversationBase,
-  } = useConversationManager(routeConversationId); 
+  } = useConversationManager(routeConversationId);
 
- // 文件上传管理
- // 提供文件上传、删除、预览等功能
+  // 文件上传管理
+  // 提供文件上传、删除、预览等功能
   const { handleFileChange } = useFileHandlers(
     mode,
     routeConversationId,
@@ -119,15 +120,17 @@ function App({ mode = "chat" }: AppProps) {
   const activeConversation =
     mode === "chat"
       ? (routeConversationId && conversations[routeConversationId]) ||
-        (currentConversationId ? conversations[currentConversationId] : undefined)
+        (currentConversationId
+          ? conversations[currentConversationId]
+          : undefined)
       : undefined; // 当前会话对象
 
-  const input = mode === "chat" ? activeConversation?.draftInput || "" : homeInput; // 当前输入框文本
+  const input =
+    mode === "chat" ? activeConversation?.draftInput || "" : homeInput; // 当前输入框文本
   const messages = activeConversation?.messages || []; // 当前会话的消息列表
   const uploadingImages = activeConversation?.uploadingImages || []; // 上传中的图片列表
   const uploadingFiles = activeConversation?.uploadingFiles || []; // 上传中的文件列表
   const isStreaming = activeConversation?.isStreaming || false; // 是否正在流式响应
-  const abortController = routeConversationId ? abortControllers[routeConversationId] || null : null;
 
   const sendMessage = useSendMessage({
     mode,
@@ -153,9 +156,12 @@ function App({ mode = "chat" }: AppProps) {
 
   // 停止流式响应
   const stopStreaming = () => {
-    if (!routeConversationId || !abortController) return;
-    abortController.abort();  //  取消当前会话的流式响应
+    if (!routeConversationId) return;
+    const latestAbortController =
+      useChatStore.getState().abortControllers[routeConversationId] || null;
+    latestAbortController?.abort(); // 点击时读取最新控制器，避免闭包拿到旧值。
     setAbortController(routeConversationId, null);
+    setStreaming(routeConversationId, false);
   };
 
   // 清空会话
@@ -211,7 +217,7 @@ function App({ mode = "chat" }: AppProps) {
   // 确保当前会话存在并切换到该会话
   useEffect(() => {
     if (mode !== "chat" || !routeConversationId) return;
-    ensureConversation(routeConversationId); // 确保会话存在 
+    ensureConversation(routeConversationId); // 确保会话存在
     switchConversation(routeConversationId); // 切换到该会话
   }, [mode, routeConversationId, ensureConversation, switchConversation]); // 依赖模式、路由会话 ID、确保会话函数、切换会话函数
 
@@ -223,18 +229,20 @@ function App({ mode = "chat" }: AppProps) {
     const state = location.state as RouteState | null; // 获取路由状态
     const shouldAutoSend = Boolean(state?.shouldAutoSend); // 是否自动发送消息
     const draftPrompt = state?.draftPrompt?.trim() || ""; // 草稿消息
-    if (!shouldAutoSend && !draftPrompt) { // 如果不自动发送消息且没有草稿消息
+    if (!shouldAutoSend && !draftPrompt) {
+      // 如果不自动发送消息且没有草稿消息
       return;
     }
 
     // 去重处理
     // location.key 是路由路径，用于区分不同的路由参数
     const token = `${location.key}:${routeConversationId}:${draftPrompt}:${shouldAutoSend ? 1 : 0}`;
-    if (routePromptTokenRef.current === token) { // 如果当前参数与上一次相同，则不处理
+    if (routePromptTokenRef.current === token) {
+      // 如果当前参数与上一次相同，则不处理
       return;
     }
     // 更新路由参数令牌
-    routePromptTokenRef.current = token; 
+    routePromptTokenRef.current = token;
     // 更新草稿输入
     if (draftPrompt) {
       setDraftInput(routeConversationId, draftPrompt);
@@ -257,12 +265,14 @@ function App({ mode = "chat" }: AppProps) {
     setDraftInput,
   ]);
 
-  // 应用效果处理 
+  // 应用效果处理
   // 处理应用的全局效果，如主题、模式、消息数量、输入框引用、消息列表、上传中的图片和文件
   useAppEffects({
     theme,
     mode,
+    activeConversationId: routeConversationId,
     messagesCount: messages.length,
+    isStreaming,
     input,
     messageInputRef,
     messages,

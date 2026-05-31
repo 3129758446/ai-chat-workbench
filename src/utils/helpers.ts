@@ -31,9 +31,9 @@ export function escapeHtml(str: string): string {
 }
 
 // 延迟到下一帧滚动，避免与当前批次 DOM 更新抢时序导致滚动高度不准确。
-export function scrollToBottom(): void {
+export function scrollToBottom(behavior: ScrollBehavior = "smooth"): void {
   window.requestAnimationFrame(() => {
-    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    window.scrollTo({ top: document.body.scrollHeight, behavior });
   });
 }
 

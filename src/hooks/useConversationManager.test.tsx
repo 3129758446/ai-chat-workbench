@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useConversationManager } from "./useConversationManager";
 import { BrowserRouter } from "react-router-dom";
 import React from "react";
+import { useChatStore } from "../store";
 
 /**
  * Hook 测试：useConversationManager.test.ts
@@ -23,6 +24,12 @@ vi.mock("react-router-dom", async () => {
 describe("useConversationManager Hook 测试", () => {
   beforeEach(() => {
     mockNavigate.mockClear();
+    useChatStore.setState({
+      currentConversationId: null,
+      orderedConversationIds: [],
+      conversations: {},
+      abortControllers: {},
+    });
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -48,5 +55,59 @@ describe("useConversationManager Hook 测试", () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith(`/chat/${testId}`);
+  });
+
+  it("删除当前会话后应返回首页", () => {
+    useChatStore.setState((state) => ({
+      ...state,
+      currentConversationId: "conv-1",
+      orderedConversationIds: ["conv-1", "conv-2"],
+      conversations: {
+        ...state.conversations,
+        "conv-1": {
+          id: "conv-1",
+          title: "会话 1",
+          messages: [],
+          chatHistory: [],
+          draftInput: "",
+          uploadingImages: [],
+          uploadingFiles: [],
+          isStreaming: false,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          lastMessagePreview: "",
+        },
+        "conv-2": {
+          id: "conv-2",
+          title: "会话 2",
+          messages: [],
+          chatHistory: [],
+          draftInput: "",
+          uploadingImages: [],
+          uploadingFiles: [],
+          isStreaming: false,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          lastMessagePreview: "",
+        },
+      },
+      abortControllers: {
+        ...state.abortControllers,
+        "conv-1": null,
+        "conv-2": null,
+      },
+    }));
+
+    const stopStreaming = vi.fn();
+    const { result } = renderHook(() => useConversationManager("conv-1"), {
+      wrapper,
+    });
+
+    act(() => {
+      result.current.handleDeleteConversation("conv-1", stopStreaming);
+    });
+
+    expect(stopStreaming).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith("/", { replace: true });
   });
 });
