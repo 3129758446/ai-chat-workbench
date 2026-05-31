@@ -143,4 +143,40 @@ describe("useSendMessage Hook 测试", () => {
     // 验证没有触发 API
     expect(api.streamChatCompletion).not.toHaveBeenCalled();
   });
+
+  it("发送文本并附带文件时，用户消息应保留文本和文件提示", async () => {
+    const readyFile = {
+      id: "file-1",
+      file: new File(["hello"], "需求.txt", { type: "text/plain" }),
+      name: "需求.txt",
+      size: 5,
+      type: "text/plain",
+      extension: ".txt",
+      status: "ready" as const,
+      text: "hello",
+      createdAt: Date.now(),
+    };
+    const { result } = renderHook(() =>
+      useSendMessage({
+        ...mockParams,
+        input: "请帮我总结",
+        uploadingFiles: [readyFile],
+      }),
+    );
+    const sendMessage = result.current;
+
+    vi.mocked(api.streamChatCompletion).mockResolvedValue("AI回复内容");
+
+    await act(async () => {
+      await sendMessage();
+    });
+
+    expect(mockParams.addUiMessage).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        role: "user",
+        text: "请帮我总结\n（已上传 1 个文件）",
+      }),
+    );
+  });
 });

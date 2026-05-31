@@ -257,11 +257,19 @@ export function useSendMessage({
       // 复制一份图片数组，避免后续 clear 操作影响当前发送快照。
       const images = [...uploadingImages];
       const files = [...readyFiles];
-      const userDisplayText =
-        text ||
-        (files.length
-          ? `（发送了 ${files.length} 个文件）`
-          : `（发送了 ${images.length} 张图片）`);
+      const attachmentTips: string[] = [];
+      if (files.length) {
+        attachmentTips.push(`已上传 ${files.length} 个文件`);
+      }
+      if (images.length) {
+        attachmentTips.push(`已上传 ${images.length} 张图片`);
+      }
+      const attachmentSummary = attachmentTips.length
+        ? `（${attachmentTips.join("，")}）`
+        : "";
+      const userDisplayText = text
+        ? `${text}${attachmentSummary ? `\n${attachmentSummary}` : ""}`
+        : attachmentSummary;
 
       // 6. 构建发送内容（处理图片），把文本 + 图片转成接口需要的格式。
       let userContent: string | MessagePart[];
