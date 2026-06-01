@@ -16,8 +16,24 @@ import {
 } from "./chatStore.helpers";
 import type { ChatState, PersistedChatState } from "./chatStore.types";
 
+export function createDatabaseOnlyStorage(storage: Storage): Storage {
+  return {
+    get length() {
+      return 0;
+    },
+    clear: () => storage.removeItem(CHAT_STORE_STORAGE),
+    getItem: () => null,
+    key: () => null,
+    removeItem: (key) => storage.removeItem(key),
+    setItem: (key, value) => {
+      void value;
+      storage.removeItem(key);
+    },
+  };
+}
+
 // 裁剪 ChatState 为可持久化的格式。
-function partializeChatState(state: ChatState): PersistedChatState {
+export function partializeChatState(state: ChatState): PersistedChatState {
   return {
     theme: state.theme,
     modelProvider: state.modelProvider,
@@ -43,7 +59,7 @@ function partializeChatState(state: ChatState): PersistedChatState {
 }
 
 // 合并持久化状态与当前运行态状态。
-function mergePersistedChatState(
+export function mergePersistedChatState(
   persisted: unknown,
   current: ChatState,
 ): ChatState {
@@ -81,7 +97,7 @@ export function createChatPersistOptions(): PersistOptions<
   return {
     name: CHAT_STORE_STORAGE,
     // Zustand 默认走 JSON 序列化，这里显式指定 localStorage 存储实现。
-    storage: createJSONStorage(() => localStorage), // 本地存储介质为 localStorage
+    storage: createJSONStorage(() => createDatabaseOnlyStorage(localStorage)), // 会话状态只通过后端数据库持久化
     partialize: partializeChatState, // 裁剪 ChatState 为可持久化的格式
     merge: mergePersistedChatState, // 合并持久化状态与当前运行态状态
   };

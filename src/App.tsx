@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useRemoteChatPersistence } from "./hooks/useRemoteChatPersistence";
 
 // 组件引入
 import { ChatPanel } from "./components/ChatPanel";
@@ -60,6 +61,8 @@ interface RouteState {
 
 // App 组件：应用主容器，负责协调会话路由、聊天状态、消息发送和页面级交互
 function App({ mode = "chat" }: AppProps) {
+  useRemoteChatPersistence();
+
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const routePromptTokenRef = useRef("");

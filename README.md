@@ -109,7 +109,11 @@ npm install
 启动开发服务：
 
 ```bash
+前端：
 npm run dev
+
+后端：
+npm run server
 ```
 
 运行单元测试：
