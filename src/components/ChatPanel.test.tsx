@@ -1,7 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { ChatPanel } from "./ChatPanel";
-import React from "react";
 
 /**
  * 组件测试：ChatPanel.test.tsx

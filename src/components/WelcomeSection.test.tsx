@@ -18,7 +18,7 @@ describe("WelcomeSection 组件测试", () => {
   it("应该正确渲染标题和副标题", () => {
     render(<WelcomeSection {...defaultProps} />);
     
-    expect(screen.getByText("嗨，我是灵犀")).toBeInTheDocument();
+    expect(screen.getByText("嗨，我是你的AI助手")).toBeInTheDocument();
     expect(screen.getByText("我能帮你做些什么？")).toBeInTheDocument();
   });
 

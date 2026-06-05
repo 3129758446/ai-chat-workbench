@@ -67,6 +67,15 @@ export function useAppEffects({
     }
   }, [theme, mode, messagesCount]);
 
+  useEffect(() => {
+    if (mode !== "home") {
+      return;
+    }
+
+    // 从聊天页回到首页或刷新首页时，避免复用上一页的底部滚动位置。
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [mode]);
+
   // 输入框自适应：先重置再按 scrollHeight 回填，避免删除内容后高度无法回缩。
   useEffect(() => {
     const inputEl = messageInputRef.current;
@@ -76,7 +85,9 @@ export function useAppEffects({
 
     inputEl.style.height = "auto";
     // 上限 160px，避免输入区过高压缩消息可视区域。
-    inputEl.style.height = `${Math.min(inputEl.scrollHeight, 160)}px`;
+    const nextHeight = Math.min(inputEl.scrollHeight, 160);
+    inputEl.style.height = `${nextHeight}px`;
+    inputEl.style.overflowY = inputEl.scrollHeight > nextHeight ? "auto" : "hidden";
   }, [input, messageInputRef]);
 
   // 切换历史会话后，等待内容渲染稳定再补一次滚动，避免 Markdown 异步渲染后底部偏移。
@@ -94,11 +105,12 @@ export function useAppEffects({
     let settleTimerId: number | null = null;
     const scrollAfterRender = () => {
       if (settleTimerId !== null) {
-        window.clearTimeout(settleTimerId);
+        return;
       }
       settleTimerId = window.setTimeout(() => {
+        settleTimerId = null;
         scrollToBottom("auto");
-      }, 40);
+      }, 16);
     };
 
     scrollAfterRender();
@@ -113,16 +125,8 @@ export function useAppEffects({
       characterData: true,
     });
 
-    const stopObserveTimerId = window.setTimeout(() => {
-      observer.disconnect();
-      if (settleTimerId !== null) {
-        window.clearTimeout(settleTimerId);
-      }
-    }, 800);
-
     return () => {
       observer.disconnect();
-      window.clearTimeout(stopObserveTimerId);
       if (settleTimerId !== null) {
         window.clearTimeout(settleTimerId);
       }
@@ -131,12 +135,37 @@ export function useAppEffects({
 
   // 消息或上传预览变化后自动滚动到底，保证最新内容可见。
   useEffect(() => {
+    if (mode !== "chat") {
+      return;
+    }
+
     if (isStreaming) {
       scrollToBottom("auto");
       return;
     }
     scrollToBottom();
-  }, [messages, uploadingImages, uploadingFiles, isStreaming]);
+  }, [mode, messages, uploadingImages, uploadingFiles, isStreaming]);
+
+  useEffect(() => {
+    if (mode !== "chat" || !activeConversationId || !isStreaming) {
+      return;
+    }
+
+    let frameId: number | null = null;
+    // 流式输出期间 Markdown 渲染高度会持续变化，用 RAF 跟随最终布局高度。
+    const followStreamingOutput = () => {
+      scrollToBottom("auto");
+      frameId = window.requestAnimationFrame(followStreamingOutput);
+    };
+
+    followStreamingOutput();
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [mode, activeConversationId, isStreaming]);
 
   // 组件卸载时兜底清理对象 URL，防止上传预览造成内存泄漏。
   useEffect(() => {

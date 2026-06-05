@@ -67,6 +67,7 @@ function App({ mode = "chat" }: AppProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const routePromptTokenRef = useRef("");
   const [homeInput, setHomeInput] = useState(""); // 首页输入框状态
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navigate = useNavigate(); // 路由跳转函数
   const location = useLocation(); // 当前路由信息
@@ -182,7 +183,9 @@ function App({ mode = "chat" }: AppProps) {
   // 创建会话
   const handleCreateConversation = () => {
     setHomeInput("");
+    setIsSidebarOpen(false);
     handleCreateConversationBase();
+    window.setTimeout(() => messageInputRef.current?.focus(), 0);
   };
 
   // 删除会话
@@ -216,6 +219,16 @@ function App({ mode = "chat" }: AppProps) {
     conversations,
     orderedConversationIds, // 会话 ID 有序列表
   );
+
+  const mobileConversationTitle =
+    activeConversation?.title ||
+    activeConversation?.lastMessagePreview ||
+    "AI 对话助手";
+
+  const handleSidebarSelectConversation = (conversationId: string) => {
+    handleSelectConversation(conversationId);
+    setIsSidebarOpen(false);
+  };
 
   // 确保当前会话存在并切换到该会话
   useEffect(() => {
@@ -286,16 +299,61 @@ function App({ mode = "chat" }: AppProps) {
   return (
     <>
       <div className="app-bg"></div>
+      <header className="mobile-chat-bar">
+        <button
+          type="button"
+          className="mobile-chat-bar-btn"
+          aria-label="打开会话列表"
+          onClick={() => setIsSidebarOpen(true)}
+        >
+          会话
+        </button>
+        <span className="mobile-chat-title" title={mobileConversationTitle}>
+          {mobileConversationTitle}
+        </span>
+        <button
+          type="button"
+          className="mobile-chat-bar-btn mobile-theme-btn"
+          aria-label="切换主题"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "light" ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12.8A8.2 8.2 0 0 1 11.2 3a7.2 7.2 0 1 0 9.8 9.8z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4.5a1 1 0 0 0 1-1V2a1 1 0 1 0-2 0v1.5a1 1 0 0 0 1 1zm0 15a1 1 0 0 0-1 1V22a1 1 0 1 0 2 0v-1.5a1 1 0 0 0-1-1zm7.5-6.5H22a1 1 0 1 0 0-2h-2.5a1 1 0 1 0 0 2zM2 13h2.5a1 1 0 1 0 0-2H2a1 1 0 1 0 0 2zm15.7-5.3 1.1-1.1a1 1 0 0 0-1.4-1.4l-1.1 1.1a1 1 0 1 0 1.4 1.4zM6.3 16.3l-1.1 1.1a1 1 0 1 0 1.4 1.4l1.1-1.1a1 1 0 1 0-1.4-1.4zm11.4 0a1 1 0 0 0-1.4 1.4l1.1 1.1a1 1 0 0 0 1.4-1.4l-1.1-1.1zM6.6 5.2a1 1 0 0 0-1.4 1.4l1.1 1.1a1 1 0 1 0 1.4-1.4L6.6 5.2zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
+          className="mobile-chat-bar-btn"
+          aria-label="新建会话"
+          onClick={handleCreateConversation}
+        >
+          新建
+        </button>
+      </header>
+      <button
+        type="button"
+        className={`sidebar-backdrop ${isSidebarOpen ? "open" : ""}`}
+        aria-label="关闭会话列表"
+        onClick={() => setIsSidebarOpen(false)}
+      />
       {/* 会话侧边栏 */}
       <div className="app-shell chat-shell">
-        <ConversationSidebar
-          conversations={conversationsForSidebar} // 会话摘要列表
-          currentConversationId={routeConversationId} // 当前会话 ID
-          onCreateConversation={handleCreateConversation} // 创建会话
-          onSelectConversation={handleSelectConversation} // 选择会话
-          onRenameConversation={renameConversation} // 重命名会话
-          onDeleteConversation={handleDeleteConversation} // 删除会话
-        />
+        <div className={`sidebar-drawer ${isSidebarOpen ? "open" : ""}`}>
+          <ConversationSidebar
+            conversations={conversationsForSidebar} // 会话摘要列表
+            currentConversationId={routeConversationId} // 当前会话 ID
+            onCreateConversation={handleCreateConversation} // 创建会话
+            onSelectConversation={handleSidebarSelectConversation} // 选择会话
+            onRenameConversation={renameConversation} // 重命名会话
+            onDeleteConversation={handleDeleteConversation} // 删除会话
+          />
+        </div>
         {/* 聊天内容区域 */}
         <main className="app">
           <WelcomeSection

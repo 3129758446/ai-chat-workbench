@@ -70,10 +70,6 @@ body {
   padding: 32px 8px 148px 0;
 }
 
-.home-shell .app {
-  max-width: 1280px;
-}
-
 @keyframes blink {
   0%,
   100% {

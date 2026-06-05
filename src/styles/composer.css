@@ -66,11 +66,43 @@ body.chat-layout .composer-wrap {
   background: transparent;
   color: var(--text);
   font-size: 18px;
-  line-height: 1.5;
+  line-height: 1.4;
   font-family: inherit;
   overflow-wrap: anywhere;
-  align-self: stretch;
-  padding: 8px 0;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(146, 170, 222, 0.65) transparent;
+  align-self: center;
+  padding: 6px 0;
+}
+
+#messageInput::-webkit-scrollbar {
+  width: 6px;
+}
+
+#messageInput::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#messageInput::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(146, 170, 222, 0.65);
+}
+
+#messageInput::-webkit-scrollbar-thumb:hover {
+  background: rgba(173, 194, 245, 0.82);
+}
+
+[data-theme="light"] #messageInput {
+  scrollbar-color: rgba(108, 129, 178, 0.42) transparent;
+}
+
+[data-theme="light"] #messageInput::-webkit-scrollbar-thumb {
+  background: rgba(108, 129, 178, 0.42);
+}
+
+[data-theme="light"] #messageInput::-webkit-scrollbar-thumb:hover {
+  background: rgba(83, 111, 168, 0.6);
 }
 
 #messageInput::placeholder {
