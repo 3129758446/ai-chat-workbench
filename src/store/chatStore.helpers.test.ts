@@ -91,5 +91,41 @@ describe("chatStore.helpers.ts 辅助逻辑测试", () => {
       );
       expect(patch.lastMessagePreview).toBe("这是回答");
     });
+
+    it("应使用 UI 消息生成标题，避免内部文件 Prompt 污染会话摘要", () => {
+      const conversation: Conversation = {
+        ...createConversationRecord(),
+        messages: [
+          {
+            id: "user-1",
+            role: "user",
+            text: "讲解一下协商缓存",
+          },
+          {
+            id: "assistant-1",
+            role: "assistant",
+            text: "协商缓存主要依赖 ETag 和 Last-Modified。",
+          },
+        ],
+        chatHistory: [
+          {
+            role: "user",
+            content:
+              "以下是用户上传的文本文件材料，请把它们作为回答的上下文资源。\n\n用户问题：讲解一下协商缓存",
+          },
+          {
+            role: "assistant",
+            content: "协商缓存主要依赖 ETag 和 Last-Modified。",
+          },
+        ],
+      };
+
+      const patch = deriveConversationPatch(conversation);
+
+      expect(patch.title).toBe("讲解一下协商缓存");
+      expect(patch.lastMessagePreview).toBe(
+        "协商缓存主要依赖 ETag 和 Last-Modified。",
+      );
+    });
   });
 });

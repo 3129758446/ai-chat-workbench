@@ -72,19 +72,26 @@ export function createConversationRecord(
 export function deriveConversationPatch(
   conversation: Conversation,
 ): Partial<Conversation> {
-  // 用首条用户消息生成标题，让侧栏无需额外手动输入也能快速区分会话。
+  // 侧边栏展示应使用 UI 消息，避免把发给模型的内部文件 Prompt 当作会话标题。
+  const firstUiUserMessage = conversation.messages.find(
+    (message) => message.role === "user" && message.text.trim(),
+  );
   const firstUserMessage = conversation.chatHistory.find(
     (message) => message.role === "user",
   );
   const suggestedTitle = shorten(
-    firstUserMessage ? previewFromContent(firstUserMessage.content) : "",
+    firstUiUserMessage?.text ||
+      (firstUserMessage ? previewFromContent(firstUserMessage.content) : ""),
     24,
   );
 
+  const lastUiMessage = conversation.messages[conversation.messages.length - 1];
   const lastHistory = conversation.chatHistory[conversation.chatHistory.length - 1];
-  const lastMessagePreview = lastHistory
-    ? shorten(previewFromContent(lastHistory.content))
-    : "";
+  const lastMessagePreview = lastUiMessage?.text.trim()
+    ? shorten(lastUiMessage.text)
+    : lastHistory
+      ? shorten(previewFromContent(lastHistory.content))
+      : "";
 
   return {
     title: suggestedTitle || conversation.title || "新会话",

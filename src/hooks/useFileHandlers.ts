@@ -7,6 +7,7 @@ import {
   validateTextFile,
   createUploadingTextFile,
   parseTextFile,
+  prepareParsedTextFile,
 } from "../utils/fileUpload";
 import { uid } from "../utils/helpers";
 import type { UploadingImage, UploadingTextFile } from "../types/chat";
@@ -101,7 +102,11 @@ export function useFileHandlers(
           .then((text) => {
             updateUploadingFile(targetConversationId, file.id, {
               status: "ready",
-              text,
+              ...prepareParsedTextFile({
+                fileId: file.id,
+                fileName: file.name,
+                text,
+              }),
             });
           })
           .catch((err) => {

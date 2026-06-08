@@ -6,7 +6,14 @@
  * 3. 通过兜底文本确保 message content 非空，避免仅上传图片且无文本时出现空内容请求。
  */
 
-import type { MessagePart, UploadingImage, UploadingTextFile } from "../types/chat";
+import type {
+  MessagePart,
+  UploadedTextDocument,
+  UploadingImage,
+  UploadingTextFile,
+} from "../types/chat";
+import type { RetrievalPlan } from "./documentRetrieval";
+import type { FileContextMode } from "./fileContextPolicy";
 import { buildFileQuestionText } from "./fileUpload";
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -23,9 +30,17 @@ function fileToDataUrl(file: File): Promise<string> {
 export async function buildUserMessageContent(
   text: string,
   images: UploadingImage[],
-  files: UploadingTextFile[] = [],
+  files: Array<UploadingTextFile | UploadedTextDocument> = [],
+  retrievalPlan?: RetrievalPlan,
+  fileContextMode?: FileContextMode,
 ): Promise<string | MessagePart[]> {
-  const textWithFiles = buildFileQuestionText(text, files); // 构建包含文件的文本
+  // 先把文本文件上下文合并进文本部分；图片仍按多模态 part 追加。
+  const textWithFiles = buildFileQuestionText(
+    text,
+    files,
+    retrievalPlan,
+    fileContextMode,
+  );
 
   // 无图片时直接返回文本，保持请求结构最简单。
   if (!images.length) {

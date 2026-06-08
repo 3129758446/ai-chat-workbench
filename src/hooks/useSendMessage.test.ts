@@ -179,4 +179,88 @@ describe("useSendMessage Hook 测试", () => {
       }),
     );
   });
+
+  it("普通概念问题带有文件时，应先正常回答并仅把文件作为补充", async () => {
+    const readyFile = {
+      id: "file-ordinary",
+      file: new File(["HTTP 缓存和 Last-Modified 的内容。"], "cache.md", {
+        type: "text/markdown",
+      }),
+      name: "cache.md",
+      size: 30,
+      type: "text/markdown",
+      extension: "md",
+      status: "ready" as const,
+      text: "HTTP 缓存和 Last-Modified 的内容。",
+      mode: "full" as const,
+      createdAt: Date.now(),
+    };
+    const { result } = renderHook(() =>
+      useSendMessage({
+        ...mockParams,
+        input: "讲解一下 Axios 请求错误监控",
+        uploadingFiles: [readyFile],
+      }),
+    );
+
+    vi.mocked(api.streamChatCompletion).mockResolvedValue("AI回复内容");
+
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(mockParams.pushHistory).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        role: "user",
+        content: expect.stringContaining("先直接回答用户问题"),
+      }),
+    );
+    expect(mockParams.pushHistory).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        role: "user",
+        content: expect.stringContaining("文件相关补充"),
+      }),
+    );
+    expect(api.streamChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("本次上传文件且要求总结时，应把文件作为辅助上下文", async () => {
+    const readyFile = {
+      id: "file-summary",
+      file: new File(["React 和 Vue 面试题。"], "frontend.md", {
+        type: "text/markdown",
+      }),
+      name: "frontend.md",
+      size: 18,
+      type: "text/markdown",
+      extension: "md",
+      status: "ready" as const,
+      text: "React 和 Vue 面试题。",
+      mode: "full" as const,
+      createdAt: Date.now(),
+    };
+    const { result } = renderHook(() =>
+      useSendMessage({
+        ...mockParams,
+        input: "总结一下",
+        uploadingFiles: [readyFile],
+      }),
+    );
+
+    vi.mocked(api.streamChatCompletion).mockResolvedValue("AI回复内容");
+
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(mockParams.pushHistory).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        role: "user",
+        content: expect.stringContaining("React 和 Vue 面试题"),
+      }),
+    );
+  });
 });

@@ -16,6 +16,7 @@ import { useChatStore } from "../store";
 import type {
   ApiMessage,
   MessagePart,
+  UploadedTextDocument,
   UiMessage,
   UploadingImage,
   UploadingTextFile,
@@ -28,9 +29,99 @@ import {
   uid,
 } from "../utils/helpers";
 import { buildUserMessageContent } from "../utils/messageContent";
+import type { RetrievalPlan } from "../utils/documentRetrieval";
+import {
+  type FileContextMode,
+  resolveFileContextPolicy,
+} from "../utils/fileContextPolicy";
+import {
+  buildRetrievalPlanPrompt,
+  createFallbackRetrievalPlan,
+  parseRetrievalPlanResponse,
+} from "../utils/retrievalPlan";
 
 const TYPEWRITER_MAX_CHUNK = 16;
 const TYPEWRITER_TAIL_START = 48;
+
+type TextFileContext = UploadingTextFile | UploadedTextDocument;
+
+function hasRetrievalFiles(files: TextFileContext[]): boolean {
+  return files.some((file) => file.mode !== "full" && file.chunks?.length);
+}
+
+function toUploadedTextDocument(file: UploadingTextFile): UploadedTextDocument {
+  // 发送后只保存可复用的文本元数据，不保存 File 对象，避免持久化运行态资源。
+  return {
+    id: file.id,
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    extension: file.extension,
+    text: file.text,
+    mode: file.mode,
+    chunks: file.chunks,
+    summary: file.summary,
+    createdAt: file.createdAt,
+  };
+}
+
+function getConversationDocuments(conversationId: string): UploadedTextDocument[] {
+  // 历史上传文档保存在会话上，支持用户后续继续围绕同一份文件追问。
+  const conversation = useChatStore.getState().conversations[conversationId] as
+    | { documentFiles?: UploadedTextDocument[] }
+    | undefined;
+  return conversation?.documentFiles || [];
+}
+
+function rememberConversationDocuments(
+  conversationId: string,
+  files: UploadingTextFile[],
+): void {
+  if (!files.length) {
+    return;
+  }
+
+  useChatStore.setState((state) => {
+    const conversation = state.conversations[conversationId];
+    if (!conversation) {
+      return state;
+    }
+    const current = ((conversation as unknown as {
+      documentFiles?: UploadedTextDocument[];
+    }).documentFiles || []) as UploadedTextDocument[];
+    // 用文件 ID 去重；同一个文件再次进入 ready 状态时用最新解析结果覆盖旧值。
+    const nextById = new Map(current.map((file) => [file.id, file]));
+    files.forEach((file) => nextById.set(file.id, toUploadedTextDocument(file)));
+
+    return {
+      conversations: {
+        ...state.conversations,
+        [conversationId]: {
+          ...conversation,
+          documentFiles: Array.from(nextById.values()),
+        } as typeof conversation,
+      },
+    };
+  });
+}
+
+function resolveEffectiveFileContextMode(
+  question: string,
+  contextFiles: TextFileContext[],
+): FileContextMode {
+  if (!contextFiles.length) {
+    return "none";
+  }
+
+  // 先尊重用户问题里的显式意图，例如“只根据文件”或“结合上传资料”。
+  const resolved = resolveFileContextPolicy(question);
+  if (resolved !== "none") {
+    return resolved;
+  }
+
+  // 没有显式命令时默认作为辅助上下文，具体是否注入由 buildFileQuestionText 再做相关性判断。
+  return "assist";
+}
 
 function resolveTypewriterChunkSize(backlog: number): number {
   if (backlog <= 0) {
@@ -196,6 +287,41 @@ export function useSendMessage({
     return nextKey;
   };
 
+  const resolveRetrievalPlan = useCallback(async (
+    provider: ChatProvider,
+    apiKey: string,
+    question: string,
+    files: TextFileContext[],
+  ): Promise<RetrievalPlan | undefined> => {
+    if (!hasRetrievalFiles(files)) {
+      return undefined;
+    }
+
+    // 长文本才需要检索计划；短文本直接进入 prompt，不额外消耗一次模型请求。
+    const prompt = buildRetrievalPlanPrompt({
+      question,
+      files: files.map((file) => ({
+        name: file.name,
+        summary: file.summary || file.text.slice(0, 1_500),
+      })),
+    });
+
+    try {
+      // 检索计划只是辅助召回，失败时回退到本地关键词，不能阻断用户的主问题。
+      const text = await streamChatCompletion(
+        provider,
+        apiKey,
+        [{ role: "user", content: prompt }],
+        new AbortController().signal,
+        () => undefined,
+      );
+      return parseRetrievalPlanResponse(text) || createFallbackRetrievalPlan(question);
+    } catch {
+      // 计划生成不是主流程，失败时退回关键词召回，保证用户问题仍能继续发送。
+      return createFallbackRetrievalPlan(question);
+    }
+  }, []);
+
   return useCallback(
     async (cardPrompt?: string) => {
       // 1. 首页只负责创建会话并跳转，不直接发请求。
@@ -279,6 +405,15 @@ export function useSendMessage({
       // 复制一份图片数组，避免后续 clear 操作影响当前发送快照。
       const images = [...uploadingImages];
       const files = [...readyFiles];
+      const contextFiles: TextFileContext[] = [
+        ...getConversationDocuments(targetConversationId),
+        ...files,
+      ];
+      // 当前问题使用文件的强度由策略函数决定，避免上传文件后所有后续问题都变成文件问答。
+      const fileContextMode = resolveEffectiveFileContextMode(
+        text,
+        contextFiles,
+      );
       const attachmentTips: string[] = [];
       if (files.length) {
         attachmentTips.push(`已上传 ${files.length} 个文件`);
@@ -294,9 +429,21 @@ export function useSendMessage({
         : attachmentSummary;
 
       // 6. 构建发送内容（处理图片），把文本 + 图片转成接口需要的格式。
+      const retrievalPlan = await resolveRetrievalPlan(
+        provider,
+        apiKey,
+        text || "请总结我上传的文件内容。",
+        fileContextMode === "none" ? [] : contextFiles,
+      );
       let userContent: string | MessagePart[];
       try {
-        userContent = await buildUserMessageContent(text, images, files);
+        userContent = await buildUserMessageContent(
+          text,
+          images,
+          contextFiles,
+          retrievalPlan,
+          fileContextMode,
+        );
       } catch (error) {
         addUiMessage(targetConversationId, {
           id: uid("assistant"),
@@ -325,6 +472,7 @@ export function useSendMessage({
 
       // 8. 把用户消息加入模型历史。
       pushHistory(targetConversationId, currentUserMessage);
+      rememberConversationDocuments(targetConversationId, files);
       // 9. 清空输入框和待发送图片。
       setInput(targetConversationId, ""); // 清空输入框文本
       clearUploadingImages(targetConversationId);
@@ -464,6 +612,7 @@ export function useSendMessage({
       setStreaming,
       ensureConversation,
       createConversation,
+      resolveRetrievalPlan,
     ],
   );
 }

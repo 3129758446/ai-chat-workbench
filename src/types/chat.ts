@@ -6,6 +6,7 @@
  * 3. 多模态消息采用联合类型，显式区分 text/image_url，便于编译期约束。
  * 4. 会话实体单独建模，为多会话状态管理和持久化提供稳定边界。
  */
+import type { DocumentChunk } from "../utils/textChunking";
 
 export type Role = "user" | "assistant";
 
@@ -48,8 +49,24 @@ export interface UploadingImage {
 }
 
 export type UploadingFileStatus = "parsing" | "ready" | "error";
+// 文本文件上下文模式：短文本完整注入，长文本走检索，超长文本预留摘要检索扩展空间。
+export type UploadingTextFileMode = "full" | "retrieval" | "summary_retrieval";
 
-// 上传中的文本文件，包含文件元数据和解析状态。
+// 已发送并挂到会话上的文本资料，只保留可复用的文本数据，不保存浏览器 File 对象。
+export interface UploadedTextDocument {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  extension: string;
+  text: string; // 纯文本数据，用于长文本检索。
+  mode?: UploadingTextFileMode; // 纯文本文件上下文模式。
+  chunks?: DocumentChunk[]; // 纯文本长文本检索所需的分块信息。
+  summary?: string; // 纯文本摘要，用于长文本检索。
+  createdAt: number; // 创建时间，用于排序。
+}
+
+// 上传中的文本文件，包含文件元数据、解析状态和长文本检索所需的分块信息。
 export interface UploadingTextFile {
   id: string;
   file: File;
@@ -59,6 +76,9 @@ export interface UploadingTextFile {
   extension: string;
   status: UploadingFileStatus;
   text: string;
+  mode?: UploadingTextFileMode;
+  chunks?: DocumentChunk[];
+  summary?: string;
   error?: string;
   truncated?: boolean;
   createdAt: number;
